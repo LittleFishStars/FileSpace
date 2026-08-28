@@ -1,0 +1,14 @@
+# 文件空间后端配置示例
+port: 0            # 0 = 随机端口
+name: ""           # 可选自定义节点名称
+
+shared_folders:
+  - path: "/home/ylxc/shared"
+    name: "共享资料"
+
+discovery:
+  service_name: "_filespace._tcp"
+  domain: "local."
+
+monitor:
+  interval_sec: 10
