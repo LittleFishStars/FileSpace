@@ -1,8 +1,9 @@
 'use client'
 
 import React, {useSyncExternalStore} from 'react';
-import {Segmented} from 'antd';
+import {Breadcrumb, Segmented} from 'antd';
 import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
+import Link from 'next/link';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
 import {useTheme, type ThemeMode} from './app_theme';
 
@@ -23,16 +24,27 @@ function getServerSnapshot() {
     return false;
 }
 
+/** 面包屑项：title 为显示内容，href 存在时渲染为可点击链接 */
+export interface BreadcrumbItem {
+    title: React.ReactNode;
+    href?: string;
+}
+
 /**
  * 应用外壳：ProLayout 顶部导航 + 右上角主题切换 + 页面容器。
- * 各页面共用，传入标题与内容即可。
+ * 各页面共用；标题可为纯文本（title），也可为面包屑形式（breadcrumb，
+ * 形如「主机列表 > 主机名 > 文件夹」，此时 title 作为加载中的回退标题）。
  */
 export default function AppShell({
     title,
+    breadcrumb,
     wide = false,
     children,
 }: {
-    title: string;
+    /** 页面标题（未提供 breadcrumb 或 breadcrumb 为空时的回退标题） */
+    title?: string;
+    /** 面包屑标题项，渲染在标题位置 */
+    breadcrumb?: BreadcrumbItem[];
     /** 内容区是否放宽（文件浏览等表格页用），默认窄栏 */
     wide?: boolean;
     children: React.ReactNode;
@@ -51,6 +63,21 @@ export default function AppShell({
         {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
     ];
 
+    // 有面包屑时标题位置渲染为面包屑，否则回退为纯文本标题。
+    const header =
+        breadcrumb && breadcrumb.length > 0
+            ? {
+                  title: (
+                      <Breadcrumb
+                          separator=">"
+                          items={breadcrumb.map((item) => ({
+                              title: item.href ? <Link href={item.href}>{item.title}</Link> : item.title,
+                          }))}
+                      />
+                  ),
+              }
+            : {title};
+
     return (
         <ProLayout
             title={'文件空间'}
@@ -67,11 +94,7 @@ export default function AppShell({
                 />,
             ]}
         >
-            <PageContainer
-                header={{
-                    title,
-                }}
-            >
+            <PageContainer header={header}>
                 <div className={`mx-auto w-full ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}>
                     {children}
                 </div>

@@ -18,6 +18,8 @@ import {formatSize} from '../_cards/folder_card';
 import {
   downloadUrl,
   fetchFolders,
+  fetchNode,
+  fetchPeers,
   fetchTree,
   type ApiFileInfo,
   type ApiFolderInfo,
@@ -48,25 +50,43 @@ function FolderBrowser() {
     const searchParams = useSearchParams();
     const folderId = searchParams.get('folderId') ?? '';
     const [folder, setFolder] = useState<ApiFolderInfo | null>(null);
+    const [hostname, setHostname] = useState('');
     const [path, setPath] = useState('');
     const [entries, setEntries] = useState<ApiFileInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [previewFile, setPreviewFile] = useState<ApiFileInfo | null>(null);
 
-    // 加载文件夹信息（名称 / 磁盘路径）
+    // 加载文件夹信息（名称 / 磁盘路径 / 所属主机名）
     useEffect(() => {
         if (!folderId) return;
         let cancelled = false;
         async function load() {
             try {
-                const folders = await fetchFolders();
+                const [node, folders, peers] = await Promise.all([
+                    fetchNode(),
+                    fetchFolders(),
+                    fetchPeers(),
+                ]);
                 if (cancelled) return;
-                const found = folders.find((f) => f.id === folderId);
+                // 先在本机共享的文件夹中查找，未命中再到 mDNS 发现的节点中查找
+                let found = folders.find((f) => f.id === folderId);
+                let host = node.hostname;
+                if (!found) {
+                    for (const peer of peers) {
+                        const f = peer.folders.find((x) => x.id === folderId);
+                        if (f) {
+                            found = f;
+                            host = peer.node.hostname;
+                            break;
+                        }
+                    }
+                }
                 if (!found) {
                     setError('文件夹不存在或已移除');
                     return;
                 }
                 setFolder(found);
+                setHostname(host);
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
             }
@@ -233,7 +253,19 @@ function FolderBrowser() {
     }
 
     return (
-        <AppShell title={folder ? folder.name : '文件夹'} wide>
+        <AppShell
+            wide
+            title="文件夹"
+            breadcrumb={
+                folder && hostname
+                    ? [
+                          {title: '主机列表', href: '/'},
+                          {title: hostname},
+                          {title: folder.name},
+                      ]
+                    : undefined
+            }
+        >
             <div className="mb-4 flex items-center justify-between">
                 <Breadcrumb items={breadcrumbItems}/>
                 <Space>
