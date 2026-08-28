@@ -75,8 +75,8 @@ python3 scripts/build.py --clean      # 清理构建产物
 `pack` 自动确保先构建产物，输出到 `build/packages/<平台>/`：
 
 ```bash
-make pack                  # Windows .exe 安装包 + Linux deb/pacman/AppImage
-make pack-windows          # 只打 Windows：build/packages/windows/FileSpace-Setup-<版本>.exe
+make pack                  # Windows .msi + Linux deb/pacman/AppImage
+make pack-windows          # 只打 Windows：build/packages/windows/FileSpace-<版本>.msi
 make pack-linux            # 只打 Linux：build/packages/linux/ 下 deb + pacman + AppImage
 # 等价直接调用脚本：
 python3 scripts/build.py pack            # 全部
@@ -86,8 +86,7 @@ python3 scripts/build.py pack linux      # Linux
 
 | 平台 | 格式 | 依赖工具（缺失时脚本会提示安装命令） |
 |---|---|---|
-| Windows | `.exe` 安装包（NSIS） | `makensis`（`yay -S nsis`） |
-| Windows（可选） | `.msi` | `wixl`（`sudo pacman -S msitools`） |
+| Windows | `.msi` | `wixl`（`sudo pacman -S msitools`） |
 | Linux | `.deb` | `dpkg-deb`（`sudo pacman -S dpkg`） |
 | Linux | pacman 包（`.pkg.tar.zst`） | `makepkg`（`sudo pacman -S base-devel`） |
 | Linux | `.AppImage` | `mksquashfs`（`sudo pacman -S squashfs-tools`）+ type2 runtime（首次自动下载缓存到 `build/tools/appimage-cache/`） |

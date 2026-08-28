@@ -12,7 +12,7 @@
 
 打包（自动确保先构建产物）：
     python3 scripts/build.py pack              # 打包全部可打包平台（windows + linux）
-    python3 scripts/build.py pack windows      # Windows：NSIS .exe 安装包（+ 可选 MSI）
+    python3 scripts/build.py pack windows      # Windows：.msi 安装包
     python3 scripts/build.py pack linux        # Linux：deb + pacman + AppImage
 
 产物输出到 build/<平台>/（每个平台目录是一个完整可分发单元）：
@@ -22,18 +22,16 @@
     build/darwin-amd64/filespace  + build/darwin-amd64/web/
 
 安装包输出到 build/packages/<平台>/：
-    build/packages/windows/FileSpace-Setup-<版本>.exe      （NSIS）
-    build/packages/windows/FileSpace-<版本>.msi             （可选，需 msitools）
+    build/packages/windows/FileSpace-<版本>.msi
     build/packages/linux/filespace_<版本>_amd64.deb
     build/packages/linux/filespace-<版本>-1-x86_64.pkg.tar.zst
     build/packages/linux/FileSpace-<版本>-x86_64.AppImage
 
 依赖的系统工具（缺失时脚本会提示安装命令）：
-    makensis（AUR nsis）      → Windows .exe 安装包
-    wixl / wixl-heat（msitools）→ Windows .msi（可选）
+    wixl / wixl-heat（msitools）→ Windows .msi
     dpkg-deb（dpkg）          → Linux .deb
     makepkg（base-devel）     → Linux pacman 包
-    appimagetool（AUR）       → AppImage
+    mksquashfs（squashfs-tools）→ AppImage（type2 runtime 自动缓存）
     rsvg-convert（librsvg）   → 应用图标生成（可选）
 """
 
@@ -62,7 +60,6 @@ MAINTAINER = "FileSpace Developers"
 
 # 打包工具的缺失提示（key 为命令名）
 TOOL_HINTS = {
-    "makensis": "Windows .exe 安装包需要 NSIS，安装：yay -S nsis（AUR）",
     "wixl": "Windows .msi 需要 msitools，安装：sudo pacman -S msitools",
     "wixl-heat": "Windows .msi 需要 msitools，安装：sudo pacman -S msitools",
     "dpkg-deb": "Linux .deb 需要 dpkg，安装：sudo pacman -S dpkg",
@@ -267,18 +264,11 @@ def install_linux_files(staging_usr_share, source_plat_dir, icon):
 # ============================================================
 
 def pack_windows(platform, version):
-    """Windows：NSIS .exe 安装包（主），msitools .msi（可选）。"""
+    """Windows：msitools 生成 .msi 安装包。"""
     print("\n[打包] Windows %s" % platform.description)
     ensure_build(platform)
     out_dir = os.path.join(PACKAGES_DIR, "windows")
     os.makedirs(out_dir, exist_ok=True)
-
-    if shutil.which("makensis"):
-        exe_out = os.path.join(out_dir, "FileSpace-Setup-%s.exe" % version)
-        _nsis_installer(platform, version, exe_out)
-        print("   ✅ %s" % exe_out)
-    else:
-        print("   ⚠️ 跳过 .exe 安装包：%s" % TOOL_HINTS["makensis"])
 
     if shutil.which("wixl") and shutil.which("wixl-heat"):
         msi_out = os.path.join(out_dir, "FileSpace-%s.msi" % version)
@@ -289,56 +279,6 @@ def pack_windows(platform, version):
             print("   ⚠️ .msi 打包失败：%s" % e)
     else:
         print("   ⚠️ 跳过 .msi：%s" % TOOL_HINTS["wixl"])
-
-
-def _nsis_installer(platform, version, exe_out):
-    """用 NSIS 生成 Windows .exe 安装包。"""
-    require_tool("makensis")
-    staging = os.path.join(BUILD_DIR, platform.name)  # build/windows/
-    nsi = os.path.join(staging, "filespace-installer.nsi")
-    out_file = os.path.abspath(exe_out).replace("\\", "/")
-
-    # 注意：脚本以 UTF-8 BOM 写入，NSIS 据此按 UTF-8 解析（支持中文界面/快捷方式名）
-    nsi_text = """Unicode True
-Name "%(name)s"
-OutFile "%(out_file)s"
-InstallDir "$PROGRAMFILES64\\FileSpace"
-InstallDirRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace" "InstallLocation"
-RequestExecutionLevel admin
-
-Page directory
-Page instfiles
-UninstPage uninstConfirm
-UninstPage instfiles
-
-Section "安装"
-  SetOutPath "$INSTDIR"
-  File "filespace.exe"
-  File /r "web"
-  WriteUninstaller "$INSTDIR\\uninstall.exe"
-  CreateDirectory "$SMPROGRAMS\\%(name)s"
-  CreateShortCut "$SMPROGRAMS\\%(name)s\\%(name)s.lnk" "$INSTDIR\\filespace.exe"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace" "DisplayName" "%(name)s"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace" "DisplayVersion" "%(version)s"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace" "Publisher" "FileSpace"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace" "UninstallString" "$INSTDIR\\uninstall.exe"
-SectionEnd
-
-Section "Uninstall"
-  Delete "$INSTDIR\\uninstall.exe"
-  Delete "$INSTDIR\\filespace.exe"
-  RMDir /r "$INSTDIR\\web"
-  RMDir "$INSTDIR"
-  Delete "$SMPROGRAMS\\%(name)s\\%(name)s.lnk"
-  RMDir "$SMPROGRAMS\\%(name)s"
-  DeleteRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FileSpace"
-SectionEnd
-""" % {"name": APP_NAME, "version": version, "out_file": out_file}
-
-    with open(nsi, "w", encoding="utf-8-sig") as f:
-        f.write(nsi_text)
-    run(["makensis", "-V2", "filespace-installer.nsi"], cwd=staging)
 
 
 def _extract_balanced_block(text, start_pat):
@@ -646,7 +586,7 @@ def do_pack(targets):
 
     if packed:
         print("\n✅ 打包完成，安装包目录：build/packages/")
-        exts = (".msi", ".exe", ".deb", ".pkg.tar.zst", ".AppImage")
+        exts = (".msi", ".deb", ".pkg.tar.zst", ".AppImage")
         for name in packed:
             d = os.path.join(PACKAGES_DIR, name)
             if os.path.isdir(d):
@@ -684,7 +624,7 @@ def list_platforms():
         print("  %-14s %s" % (name, p.description))
     print("不传平台参数时编译全部平台。")
     print("\n打包格式（build.py pack [平台]）：")
-    print("  windows → NSIS .exe 安装包（+ 可选 .msi）")
+    print("  windows → .msi 安装包（msitools）")
     print("  linux   → deb + pacman + AppImage")
     print("  darwin* → 暂无安装包格式，仅编译产物")
 
