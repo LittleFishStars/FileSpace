@@ -21,14 +21,22 @@ import (
 )
 
 // webRoot 定位前端静态资源，优先级：
-//  1. 二进制同级目录下的 web/
-//  2. 当前工作目录下的 web/
+//  1. 二进制同级目录下的 web/（随包分发 / AppImage 布局）
+//  2. 当前工作目录下的 web/（开发模式）
+//  3. 系统安装布局 /usr/share/filespace/web（deb / pacman 包）
 func webRoot() string {
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		if fi, err := os.Stat(filepath.Join(dir, "web")); err == nil && fi.IsDir() {
 			return filepath.Join(dir, "web")
 		}
+	}
+	if fi, err := os.Stat("./web"); err == nil && fi.IsDir() {
+		return "./web"
+	}
+	const sysWeb = "/usr/share/filespace/web"
+	if fi, err := os.Stat(sysWeb); err == nil && fi.IsDir() {
+		return sysWeb
 	}
 	return "./web"
 }

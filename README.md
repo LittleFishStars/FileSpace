@@ -68,7 +68,31 @@ python3 scripts/build.py --list       # 列出支持的平台
 python3 scripts/build.py --clean      # 清理构建产物
 ```
 
-`build/<平台>/filespace` 运行时自动定位同级 `web/` 目录（找不到时回退到当前目录下的 `web/`）。
+`build/<平台>/filespace` 运行时自动定位同级 `web/` 目录（找不到时回退到当前目录下的 `web/`，deb / pacman 安装后还会查找系统目录 `/usr/share/filespace/web`）。
+
+### 打包安装包
+
+`pack` 自动确保先构建产物，输出到 `build/packages/<平台>/`：
+
+```bash
+make pack                  # Windows .exe 安装包 + Linux deb/pacman/AppImage
+make pack-windows          # 只打 Windows：build/packages/windows/FileSpace-Setup-<版本>.exe
+make pack-linux            # 只打 Linux：build/packages/linux/ 下 deb + pacman + AppImage
+# 等价直接调用脚本：
+python3 scripts/build.py pack            # 全部
+python3 scripts/build.py pack windows    # Windows
+python3 scripts/build.py pack linux      # Linux
+```
+
+| 平台 | 格式 | 依赖工具（缺失时脚本会提示安装命令） |
+|---|---|---|
+| Windows | `.exe` 安装包（NSIS） | `makensis`（`yay -S nsis`） |
+| Windows（可选） | `.msi` | `wixl`（`sudo pacman -S msitools`） |
+| Linux | `.deb` | `dpkg-deb`（`sudo pacman -S dpkg`） |
+| Linux | pacman 包（`.pkg.tar.zst`） | `makepkg`（`sudo pacman -S base-devel`） |
+| Linux | `.AppImage` | `mksquashfs`（`sudo pacman -S squashfs-tools`）+ type2 runtime（首次自动下载缓存到 `build/tools/appimage-cache/`） |
+
+> deb / pacman 包安装到 `/usr/bin/filespace`，前端资源在 `/usr/share/filespace/web`；AppImage 内含完整资源（二进制同级 `web/`），保持用户当前工作目录共享。应用图标由 `scripts/assets/filespace.svg` 生成（需要 `librsvg`）。
 
 ### 交叉编译（后端为纯 Go，可跨平台构建）
 

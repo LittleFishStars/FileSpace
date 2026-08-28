@@ -18,7 +18,11 @@ make build                  # 全部平台构建（等价 python3 scripts/build.
 make build-linux / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
 python3 scripts/build.py windows darwin   # 脚本直接调用，可多平台
 python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
+make pack                   # 打包安装包（等价 python3 scripts/build.py pack）
+make pack-windows / pack-linux            # 指定平台安装包（NSIS/msi、deb/pacman/AppImage）
 ```
+
+打包依赖系统工具：makensis（AUR nsis）、dpkg-deb（dpkg）、makepkg（base-devel）、mksquashfs（squashfs-tools，AppImage 手动构建 + type2 runtime 自动缓存）、可选 wixl（msitools）/ rsvg-convert（librsvg）；脚本缺失时提示安装命令。安装包输出到 `build/packages/<平台>/`。
 
 ## 后端约定
 

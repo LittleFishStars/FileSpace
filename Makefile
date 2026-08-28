@@ -4,11 +4,14 @@
 #             make dev-web / make dev-backend → 单独启动
 # 生产构建：  make build           → 全部平台（等价 python3 scripts/build.py）
 # 指定平台：  make build-linux / build-windows / build-darwin / build-darwin-amd64
+# 打包：      make pack            → Windows/Linux 安装包（等价 python3 scripts/build.py pack）
+#             make pack-windows / pack-linux → 指定平台安装包
 # 清理：      make clean
 #
-# 构建逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/<平台>/。
+# 构建/打包逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/<平台>/，
+# 安装包输出到 build/packages/<平台>/。
 
-.PHONY: dev dev-web dev-backend build build-linux build-windows build-darwin build-darwin-amd64 clean
+.PHONY: dev dev-web dev-backend build build-linux build-windows build-darwin build-darwin-amd64 pack pack-windows pack-linux clean
 
 # 开发：前端（Next.js dev server，:3000，/api/* 自动代理到 :8080）
 dev-web:
@@ -43,6 +46,16 @@ build-darwin:
 
 build-darwin-amd64:
 	python3 scripts/build.py darwin-amd64
+
+# 打包安装包：全部（windows + linux）/ 指定平台
+pack:
+	python3 scripts/build.py pack
+
+pack-windows:
+	python3 scripts/build.py pack windows
+
+pack-linux:
+	python3 scripts/build.py pack linux
 
 clean:
 	python3 scripts/build.py --clean

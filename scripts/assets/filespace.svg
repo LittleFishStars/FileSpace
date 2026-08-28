@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- 文件夹主体 -->
+  <path d="M32 64 a12 12 0 0 1 12-12 h56 l24 28 h88 a12 12 0 0 1 12 12 v96 a12 12 0 0 1 -12 12 H44 a12 12 0 0 1 -12-12 Z" fill="#4096ff"/>
+  <!-- 文件夹前端高光 -->
+  <path d="M32 108 V184 a12 12 0 0 0 12 12 h168 a12 12 0 0 0 12-12 v-76 Z" fill="#2f6fd8"/>
+  <!-- 纸张 -->
+  <rect x="84" y="84" width="88" height="112" rx="8" fill="#ffffff"/>
+  <!-- 纸张上标题线 -->
+  <rect x="100" y="104" width="56" height="8" rx="4" fill="#c9d6f0"/>
+  <!-- 纸张上内容线 -->
+  <rect x="100" y="124" width="56" height="8" rx="4" fill="#e2e9f8"/>
+  <rect x="100" y="140" width="44" height="8" rx="4" fill="#e2e9f8"/>
+  <!-- 纸张右下角折叠 -->
+  <path d="M172 172 v16 a8 8 0 0 1 -8 8 h-12 Z" fill="#eef2fa"/>
+  <!-- 网络弧线（P2P） -->
+  <circle cx="68" cy="164" r="10" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <circle cx="188" cy="164" r="10" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <circle cx="128" cy="120" r="8" fill="#ffffff"/>
+  <path d="M132 126 Q150 146 182 158" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M124 126 Q106 146 74 158" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+</svg>
