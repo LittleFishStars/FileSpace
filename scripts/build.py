@@ -91,9 +91,10 @@ PLATFORMS = {
 }
 
 
-def run(cmd, cwd=None, env=None):
-    """打印并执行命令，失败即抛出异常。"""
-    print("==> " + " ".join(cmd))
+def run(cmd, cwd=None, env=None, quiet=False):
+    """执行命令，失败即抛出异常；quiet=True 时不回显命令行（辅助命令）。"""
+    if not quiet:
+        print("==> " + " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, env=env, check=True)
 
 
@@ -120,7 +121,7 @@ def read_version():
 
 def binary_name(platform):
     """目标平台的可执行文件名。"""
-    return "filespace.exe" if platform.goos == "windows" else "filespace"
+    return APP_BINARY + ".exe" if platform.goos == "windows" else APP_BINARY
 
 
 # ============================================================
@@ -176,15 +177,16 @@ def build_platforms(targets):
 
     print("\n✅ 构建完成，产物目录：")
     for name in targets:
-        print("   build/%s/  （运行：cd build/%s && ./%s）" % (
-            name, name, "filespace.exe" if PLATFORMS[name].goos == "windows" else "filespace"))
+        p = PLATFORMS[name]
+        print("   build/%s/  （运行：cd build/%s && ./%s）" % (name, name, binary_name(p)))
 
 
 def ensure_build(platform):
     """确保某平台构建产物存在（存在则复用，缺失则先构建）。"""
     plat_dir = os.path.join(BUILD_DIR, platform.name)
     binary = os.path.join(plat_dir, binary_name(platform))
-    if os.path.isfile(binary) and os.path.isdir(os.path.join(plat_dir, "web")):
+    web_dir = os.path.join(plat_dir, "web")
+    if os.path.isfile(binary) and os.path.isdir(web_dir):
         print("   复用已有构建产物：build/%s/" % platform.name)
         return
     print("   构建产物缺失，先构建 %s ..." % platform.name)
@@ -203,7 +205,7 @@ def strip_copy(src, dst):
     os.chmod(dst, 0o755)
     if shutil.which("strip"):
         try:
-            run(["strip", "--strip-unneeded", dst])
+            run(["strip", "--strip-unneeded", dst], quiet=True)
         except subprocess.CalledProcessError:
             pass  # 无法 strip 时保留原始副本
 
@@ -217,11 +219,11 @@ def ensure_icon():
     os.makedirs(os.path.dirname(png), exist_ok=True)
     rsvg = shutil.which("rsvg-convert")
     if rsvg:
-        run([rsvg, "-w", "256", "-h", "256", "-o", png, svg])
+        run([rsvg, "-w", "256", "-h", "256", "-o", png, svg], quiet=True)
         return png
     convert = shutil.which("convert")
     if convert:
-        run(["convert", "-background", "none", "-resize", "256x256", svg, png])
+        run(["convert", "-background", "none", "-resize", "256x256", svg, png], quiet=True)
         return png
     print("   ⚠️ 缺少 rsvg-convert / convert，跳过应用图标（%s）" % TOOL_HINTS["rsvg-convert"])
     return None
@@ -538,14 +540,12 @@ def _appimage(platform, version, appimage_out, icon):
     os.makedirs(cache_home, exist_ok=True)
     runtime = os.path.join(cache_home, "runtime-x86_64")
     if not os.path.isfile(runtime):
-        print("   下载 AppImage runtime（%s）..." % APPIMAGE_RUNTIME_URL)
+        print("   下载 AppImage runtime ...")
         try:
-            subprocess.run(["curl", "-sL", "-m", "300", "--retry", "2",
-                            "-o", runtime, APPIMAGE_RUNTIME_URL], check=True)
+            run(["curl", "-sL", "-m", "300", "--retry", "2",
+                 "-o", runtime, APPIMAGE_RUNTIME_URL], quiet=True)
         except subprocess.CalledProcessError:
-            sys.exit("错误：AppImage runtime 下载失败。可手动下载到 %s 后重试" % runtime)
-    if not os.path.isfile(runtime):
-        sys.exit("错误：缺少 AppImage runtime：%s" % runtime)
+            sys.exit("错误：AppImage runtime 下载失败，可手动下载到 %s 后重试" % runtime)
 
     # 2) 压缩 AppDir 为 squashfs
     squash = os.path.join(PACKAGES_DIR, "linux", "appdir.squashfs")
@@ -568,6 +568,13 @@ def _appimage(platform, version, appimage_out, icon):
 # 打包入口
 # ============================================================
 
+# 可打包平台 → 打包函数（其余平台仅编译产物）
+PACKERS = {
+    "windows": pack_windows,
+    "linux": pack_linux,
+}
+
+
 def do_pack(targets):
     """按平台打包安装包（windows / linux），其余平台仅构建产物。"""
     version = read_version()
@@ -575,12 +582,9 @@ def do_pack(targets):
     packed = []
     for name in targets:
         p = PLATFORMS[name]
-        if name == "windows":
-            pack_windows(p, version)
-            packed.append("windows")
-        elif name == "linux":
-            pack_linux(p, version)
-            packed.append("linux")
+        if name in PACKERS:
+            PACKERS[name](p, version)
+            packed.append(name)
         else:
             print("\n⏭️  %s 暂无安装包格式（仅编译产物）" % p.description)
 
@@ -629,6 +633,13 @@ def list_platforms():
     print("  darwin* → 暂无安装包格式，仅编译产物")
 
 
+def validate_targets(targets):
+    """校验平台名，存在未知平台时报错退出。"""
+    unknown = [t for t in targets if t not in PLATFORMS]
+    if unknown:
+        sys.exit("错误：未知平台 %s，支持：%s" % (", ".join(unknown), ", ".join(PLATFORMS)))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="文件空间 FileSpace 构建/打包脚本",
@@ -644,27 +655,25 @@ def main():
     parser.add_argument("--clean", action="store_true", help="清理构建产物后退出")
     args = parser.parse_args()
 
-    if args.list:
-        list_platforms()
-        return
-    if args.clean:
-        clean()
-        return
+    try:
+        if args.list:
+            list_platforms()
+            return
+        if args.clean:
+            clean()
+            return
 
-    if args.platforms and args.platforms[0] == "pack":
-        pack_targets = args.platforms[1:] or ["windows", "linux"]
-        unknown = [t for t in pack_targets if t not in PLATFORMS]
-        if unknown:
-            sys.exit("错误：未知平台 %s，支持：%s" % (", ".join(unknown), ", ".join(PLATFORMS)))
-        do_pack(pack_targets)
-        return
+        if args.platforms and args.platforms[0] == "pack":
+            pack_targets = args.platforms[1:] or ["windows", "linux"]
+            validate_targets(pack_targets)
+            do_pack(pack_targets)
+            return
 
-    targets = args.platforms or list(PLATFORMS)
-    unknown = [t for t in targets if t not in PLATFORMS]
-    if unknown:
-        sys.exit("错误：未知平台 %s，支持：%s" % (", ".join(unknown), ", ".join(PLATFORMS)))
-
-    build_platforms(targets)
+        targets = args.platforms or list(PLATFORMS)
+        validate_targets(targets)
+        build_platforms(targets)
+    except subprocess.CalledProcessError as e:
+        sys.exit("错误：命令执行失败（退出码 %s）：%s" % (e.returncode, " ".join(e.cmd)))
 
 
 if __name__ == "__main__":
