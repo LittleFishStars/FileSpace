@@ -45,6 +45,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
+- 版本号约定：`backend/version.go` 当前为 `0.1.0`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

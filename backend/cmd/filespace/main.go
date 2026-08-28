@@ -41,13 +41,54 @@ func webRoot() string {
 	return "./web"
 }
 
+// usage 打印命令行帮助信息（help 命令与 -h 共用）。
+func usage() {
+	fmt.Print(`filespace — 局域网文件共享工具
+
+用法:
+  filespace [选项] [目录...]
+
+在任意文件夹执行 filespace 即可共享该文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
+
+参数:
+  [目录...]               要共享的文件夹（可多个）；缺省共享当前目录
+  -c, --config <文件>     配置文件路径（YAML）
+  -p, --port <端口>       监听端口（默认 8080）
+  -h, --help              显示本帮助信息
+
+命令:
+  help                    显示本帮助信息
+
+示例:
+  filespace                        共享当前目录
+  filespace ~/docs /mnt/data       共享多个目录
+  filespace -p 9000 ~/docs         指定端口
+  filespace -c config.yaml         使用配置文件
+
+配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders。
+`)
+}
+
 func main() {
+	flag.Usage = usage
 	var configPath string
 	var port int
+	var showHelp bool
+	// 长名与短名别名指向同一变量，-x 与 --x 由 flag 包等价解析
 	flag.StringVar(&configPath, "config", "", "配置文件路径")
+	flag.StringVar(&configPath, "c", "", "配置文件路径（-c, --config 简写）")
 	flag.IntVar(&port, "port", 0, "监听端口（默认 8080）")
+	flag.IntVar(&port, "p", 0, "监听端口（-p, --port 简写）")
+	flag.BoolVar(&showHelp, "help", false, "显示帮助信息")
+	flag.BoolVar(&showHelp, "h", false, "显示帮助信息（-h, --help 简写）")
 	flag.Parse()
 	args := flag.Args()
+
+	// -h / --help 或 help 命令：显示帮助信息后退出
+	if showHelp || (len(args) > 0 && args[0] == "help") {
+		usage()
+		return
+	}
 
 	// 配置优先级：命令行路径 > 配置文件 > 默认（共享当前目录）
 	cfg := filespace.DefaultConfig()
