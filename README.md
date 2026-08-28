@@ -14,23 +14,24 @@
 
 ```text
 .
+├── Makefile              # 编译入口
 ├── web/                  # 前端（Next.js + antd）
 │   ├── app/
 │   │   ├── _cards/       # 卡片组件（节点 / 文件夹 / 节点信息）
 │   │   └── _components/  # 布局外壳、主题管理
 │   └── public/
-└── backend/              # 后端（Go）
-    ├── cmd/filespace/    # CLI 入口
-    ├── internal/
-    │   ├── api/          # HTTP API 路由与处理
-    │   ├── discovery/    # mDNS 服务注册与发现
-    │   ├── share/        # 共享目录扫描 / 索引 / 监听
-    │   ├── monitor/      # 系统状态采集（CPU / 内存 / 运行时间）
-    │   └── model/        # 数据模型（与前端对齐）
-    ├── config.go         # 配置结构体
-    ├── config.yaml       # 配置示例
-    ├── version.go        # 版本号
-    └── web/              # 前端构建产物（go:embed 内嵌，当前为占位）
+├── backend/              # 后端（Go）
+│   ├── cmd/filespace/    # CLI 入口
+│   ├── internal/
+│   │   ├── api/          # HTTP API 路由与处理
+│   │   ├── discovery/    # mDNS 服务注册与发现
+│   │   ├── share/        # 共享目录扫描 / 索引 / 监听
+│   │   ├── monitor/      # 系统状态采集（CPU / 内存 / 运行时间）
+│   │   └── model/        # 数据模型（与前端对齐）
+│   ├── config.go         # 配置结构体
+│   ├── config.yaml       # 配置示例
+│   └── version.go        # 版本号
+└── build/                # 构建产物（gitignored）：filespace 二进制 + web/ 静态资源
 ```
 
 ## 架构
@@ -39,29 +40,31 @@ P2P + mDNS：每个节点运行一份后端，既对外提供共享，又通过 
 
 ## 使用
 
-### 后端（每个需要共享的机器）
+### 一键构建（前后端统一输出到 build/）
 
 ```bash
-# 开发运行：在要共享的文件夹下执行
-cd ~/my-shared-folder
-go run ./cmd/filespace
-
-# 构建为单二进制
-go build ./cmd/filespace
-./filespace ~/Documents/public
+make build
+# 产物：
+#   build/filespace   —— Go 二进制
+#   build/web/        —— 前端静态资源
+cd build && ./filespace
 ```
+
+`build/filespace` 运行时自动定位同级 `web/` 目录（找不到时回退到当前目录下的 `web/`）。
+
+### 开发
+
+```bash
+# 终端 1：前端（热更新，:3000，/api/* 自动代理到后端 :8080）
+make dev-web
+
+# 终端 2：后端（:8080）
+make dev-backend
+```
+
+浏览器打开 `http://localhost:3000`；生产环境前后端同源（后端托管 `build/web/`），无需单独部署前端。
 
 配置见 `backend/config.yaml`：监听端口、共享目录列表、mDNS 服务名、状态采集间隔等。
-
-### 前端
-
-```bash
-cd web
-pnpm install
-pnpm dev
-```
-
-浏览器打开 `http://localhost:3000`（生产环境将由后端 `go:embed` 内嵌托管，无需单独部署前端）。
 
 ## API 一览
 
