@@ -15,19 +15,12 @@ interface ThemeContextValue {
     mode: ThemeMode;
     isDark: boolean;
     setMode: (mode: ThemeMode) => void;
-    toggle: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';
-/** 与 layout.tsx 中的首屏内联脚本保持一致 */
 const STORAGE_KEY = 'file-space-theme-mode';
-const MODE_ORDER: ThemeMode[] = ['system', 'light', 'dark'];
-
-function nextMode(mode: ThemeMode): ThemeMode {
-    return MODE_ORDER[(MODE_ORDER.indexOf(mode) + 1) % MODE_ORDER.length];
-}
 
 function subscribe(onStoreChange: () => void): () => void {
     const mq = window.matchMedia(DARK_QUERY);
@@ -67,8 +60,6 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
         }
     }, []);
 
-    const toggle = useCallback(() => setMode(nextMode(mode)), [mode, setMode]);
-
     // 在 <html> 上开关 .dark，让 Tailwind dark: 变体与页面背景跟随当前主题
     useEffect(() => {
         const root = document.documentElement;
@@ -77,8 +68,8 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
     }, [isDark]);
 
     const value = useMemo<ThemeContextValue>(
-        () => ({mode, isDark, setMode, toggle}),
-        [mode, isDark, setMode, toggle],
+        () => ({mode, isDark, setMode}),
+        [mode, isDark, setMode],
     );
 
     return (

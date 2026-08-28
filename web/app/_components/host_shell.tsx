@@ -1,67 +1,13 @@
 'use client'
 
-import React, {useEffect, useState, useSyncExternalStore} from 'react';
-import {Alert, Empty, Segmented, Spin} from 'antd';
-import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
-import {PageContainer, ProLayout} from '@ant-design/pro-components';
+import React, {useEffect, useState} from 'react';
+import {Alert, Empty, Spin} from 'antd';
+import AppShell from './app_shell';
 import HostCard, {type HostInfo} from '../_cards/host_card';
-import {useTheme, type ThemeMode} from './app_theme';
-
-/**
- * 客户端挂载检测：服务端水合前为 false，客户端挂载后为 true。
- * 用它在客户端才渲染 ProLayout，避免服务端渲染依赖 window.matchMedia 的
- * 响应式布局（screen-md 等）导致 hydration mismatch。
- */
-function subscribeNoop() {
-    return () => {};
-}
-
-function getClientSnapshot() {
-    return true;
-}
-
-function getServerSnapshot() {
-    return false;
-}
-
-// 后端 API 数据类型（与 backend/internal/model 对齐）
-interface NodeInfo {
-    id: string;
-    hostname: string;
-    ip: string;
-    os: string;
-    softwareVersion: string;
-    status: string;
-    uptime: string;
-    listenAddr: string;
-}
-
-interface FolderInfo {
-    id: string;
-    name: string;
-    path: string;
-    fileCount: number;
-    totalSize: number;
-    updatedAt: string;
-}
-
-interface PeerInfo {
-    node: NodeInfo;
-    folders: FolderInfo[];
-    online: boolean;
-    lastSeen: string;
-}
-
-async function fetchJSON<T>(url: string): Promise<T> {
-    const res = await fetch(url);
-    if (!res.ok) {
-        throw new Error(`${url} 返回 ${res.status}`);
-    }
-    return res.json() as Promise<T>;
-}
+import {fetchNode, fetchPeers, fetchFolders, type ApiFolderInfo, type ApiNodeInfo} from '../_lib/api';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
-function toHostInfo(node: NodeInfo, folders: FolderInfo[]): HostInfo {
+function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
     return {
         id: node.id,
         hostname: node.hostname,
@@ -80,14 +26,8 @@ function toHostInfo(node: NodeInfo, folders: FolderInfo[]): HostInfo {
     };
 }
 
-/**
- * 应用外壳。
- * 负责页面顶层布局（ProLayout 顶部导航 + PageContainer），右上角提供主题切换控件，
- * 并加载后端数据：本节点 + mDNS 发现的其他节点（含各自共享文件夹）。
- */
+/** 主机列表页：本节点 + mDNS 发现的其他节点（含各自共享文件夹） */
 export default function HostShell() {
-    const mounted = useSyncExternalStore(subscribeNoop, getClientSnapshot, getServerSnapshot);
-    const {mode, setMode} = useTheme();
     const [hosts, setHosts] = useState<HostInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -96,9 +36,9 @@ export default function HostShell() {
         async function load() {
             try {
                 const [node, folders, peers] = await Promise.all([
-                    fetchJSON<NodeInfo>('/api/node'),
-                    fetchJSON<FolderInfo[]>('/api/folders'),
-                    fetchJSON<PeerInfo[]>('/api/peers'),
+                    fetchNode(),
+                    fetchFolders(),
+                    fetchPeers(),
                 ]);
                 if (cancelled) return;
                 const list: HostInfo[] = [toHostInfo(node, folders)];
@@ -119,17 +59,6 @@ export default function HostShell() {
             cancelled = true;
         };
     }, []);
-
-    // 挂载前渲染占位，避免服务端渲染 ProLayout。
-    if (!mounted) {
-        return <div className="min-h-screen"/>;
-    }
-
-    const themeOptions = [
-        {label: '系统', value: 'system' as ThemeMode, icon: <DesktopOutlined/>},
-        {label: '浅色', value: 'light' as ThemeMode, icon: <SunOutlined/>},
-        {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
-    ];
 
     let content: React.ReactNode;
     if (error) {
@@ -152,31 +81,5 @@ export default function HostShell() {
         );
     }
 
-    return (
-        <ProLayout
-            title={'文件空间'}
-            logo={undefined}
-            layout={'top'}
-            actionsRender={() => [
-                <Segmented
-                    key="theme-toggle"
-                    size="middle"
-                    style={{marginRight: 16}}
-                    value={mode}
-                    onChange={(value) => setMode(value as ThemeMode)}
-                    options={themeOptions}
-                />,
-            ]}
-        >
-            <PageContainer
-                header={{
-                    title: '主机列表',
-                }}
-            >
-                <div className="mx-auto max-w-2xl">
-                    {content}
-                </div>
-            </PageContainer>
-        </ProLayout>
-    );
+    return <AppShell title="主机列表">{content}</AppShell>;
 }

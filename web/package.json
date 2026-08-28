@@ -11,6 +11,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
     "@ant-design/pro-components": "^2.8.10",
+    "@smazeeapps/file-viewer": "^1.0.7",
     "antd": "^6.6.0",
     "next": "16.3.0",
     "react": "19.2.8",

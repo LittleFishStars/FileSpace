@@ -25,8 +25,8 @@
 │   ├── internal/
 │   │   ├── api/          # HTTP API 路由与处理
 │   │   ├── discovery/    # mDNS 服务注册与发现
-│   │   ├── share/        # 共享目录扫描 / 索引 / 监听
-│   │   ├── monitor/      # 系统状态采集（CPU / 内存 / 运行时间）
+│   │   ├── share/        # 共享目录扫描 / 索引
+│   │   ├── monitor/      # 系统状态采集（主机名 / 系统 / 运行时间 / IP，跨平台）
 │   │   └── model/        # 数据模型（与前端对齐）
 │   ├── config.go         # 配置结构体
 │   ├── config.yaml       # 配置示例
@@ -52,14 +52,25 @@ cd build && ./filespace
 
 `build/filespace` 运行时自动定位同级 `web/` 目录（找不到时回退到当前目录下的 `web/`）。
 
+### 交叉编译（后端为纯 Go，可跨平台构建）
+
+```bash
+make build-windows         # Windows amd64 → build/filespace.exe
+make build-darwin          # macOS Apple Silicon → build/filespace-darwin
+make build-darwin-amd64    # macOS Intel → build/filespace-darwin-amd64
+```
+
+后端支持 **Linux / macOS / Windows**（含运行时间与系统名读取的平台实现）；前端 `build/web/` 与平台无关，可直接随二进制分发。
+
 ### 开发
 
 ```bash
-# 终端 1：前端（热更新，:3000，/api/* 自动代理到后端 :8080）
-make dev-web
+# 一条命令同时启动前后端
+make dev
 
-# 终端 2：后端（:8080）
-make dev-backend
+# 或分别启动（适合 IDE 里分开运行）
+make dev-web       # 前端（:3000，/api/* 自动代理到 :8080）
+make dev-backend   # 后端（:8080）
 ```
 
 浏览器打开 `http://localhost:3000`；生产环境前后端同源（后端托管 `build/web/`），无需单独部署前端。
@@ -79,8 +90,11 @@ make dev-backend
 ## 开发状态
 
 - [x] 前端：节点卡片、文件夹卡片、节点信息、深浅主题
-- [ ] 后端：共享目录扫描 / 索引 / 文件变更监听
-- [ ] 后端：系统状态采集
-- [ ] 后端：HTTP API
-- [ ] 后端：mDNS 服务注册与发现
-- [ ] 前后端联调
+- [x] 前端：文件浏览（面包屑 / 文件列表 / 分页）
+- [x] 前端：在线预览（PDF 走浏览器原生，Office/代码/文本/图片等走 @smazeeapps/file-viewer，二进制回退下载）
+- [x] 后端：共享目录扫描 / 索引
+- [x] 后端：系统状态采集（跨平台：Linux / macOS / Windows）
+- [x] 后端：HTTP API（节点 / 文件夹 / 文件树 / 下载）
+- [x] 后端：mDNS 服务注册与发现
+- [x] 前后端联调
+- [ ] 后端：文件变更实时监听（fsnotify）

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { ProCard } from '@ant-design/pro-components'
 import { Badge } from 'antd'
 import {
@@ -97,7 +98,9 @@ export default function HostCard({ host }: { host: HostInfo }) {
       </div>
       <div className="mt-3 flex flex-col gap-3">
         {host.folders.map((folder) => (
-          <FolderCard key={folder.id} folder={folder} />
+          <Link key={folder.id} href={`/folders?folderId=${folder.id}`} className="block">
+            <FolderCard folder={folder}/>
+          </Link>
         ))}
       </div>
     </ProCard>
