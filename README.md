@@ -14,7 +14,9 @@
 
 ```text
 .
-├── Makefile              # 编译入口
+├── Makefile              # 编译入口（构建委托给 scripts/build.py）
+├── scripts/              # 构建脚本
+│   └── build.py          # Python 构建脚本（按平台编译，产物输出到 build/<平台>/）
 ├── web/                  # 前端（Next.js + antd）
 │   ├── app/
 │   │   ├── _cards/       # 卡片组件（节点 / 文件夹 / 节点信息）
@@ -31,7 +33,7 @@
 │   ├── config.go         # 配置结构体
 │   ├── config.yaml       # 配置示例
 │   └── version.go        # 版本号
-└── build/                # 构建产物（gitignored）：filespace 二进制 + web/ 静态资源
+└── build/                # 构建产物（gitignored）：build/<平台>/ 下为二进制 + web/ 静态资源
 ```
 
 ## 架构
@@ -40,27 +42,37 @@ P2P + mDNS：每个节点运行一份后端，既对外提供共享，又通过 
 
 ## 使用
 
-### 一键构建（前后端统一输出到 build/）
+### 一键构建（前后端统一输出到 build/<平台>/）
+
+构建由 `scripts/build.py` 完成：先构建平台无关的前端静态资源，再按平台交叉编译后端，每个平台目录都是一个完整可分发单元（二进制 + `web/`）。
 
 ```bash
-make build
+make build                 # 编译全部平台（等价 python3 scripts/build.py）
+make build-linux           # 只编译 Linux x86_64
+make build-windows         # 只编译 Windows amd64
+make build-darwin          # 只编译 macOS Apple Silicon
+make build-darwin-amd64    # 只编译 macOS Intel
 # 产物：
-#   build/filespace   —— Go 二进制
-#   build/web/        —— 前端静态资源
-cd build && ./filespace
+#   build/linux/filespace.exe 等 → build/<平台>/filespace（Windows 为 filespace.exe）
+#   build/<平台>/web/           → 前端静态资源
+cd build/linux && ./filespace
 ```
 
-`build/filespace` 运行时自动定位同级 `web/` 目录（找不到时回退到当前目录下的 `web/`）。
+也可直接调用脚本，支持一次指定多个平台：
+
+```bash
+python3 scripts/build.py              # 全部平台
+python3 scripts/build.py windows      # 指定平台
+python3 scripts/build.py windows darwin  # 多个平台
+python3 scripts/build.py --list       # 列出支持的平台
+python3 scripts/build.py --clean      # 清理构建产物
+```
+
+`build/<平台>/filespace` 运行时自动定位同级 `web/` 目录（找不到时回退到当前目录下的 `web/`）。
 
 ### 交叉编译（后端为纯 Go，可跨平台构建）
 
-```bash
-make build-windows         # Windows amd64 → build/filespace.exe
-make build-darwin          # macOS Apple Silicon → build/filespace-darwin
-make build-darwin-amd64    # macOS Intel → build/filespace-darwin-amd64
-```
-
-后端支持 **Linux / macOS / Windows**（含运行时间与系统名读取的平台实现）；前端 `build/web/` 与平台无关，可直接随二进制分发。
+支持 **Linux / macOS / Windows**（含运行时间与系统名读取的平台实现）；前端 `build/<平台>/web/` 与平台无关，随对应平台目录一同分发。
 
 ### 开发
 

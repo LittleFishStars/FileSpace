@@ -6,15 +6,18 @@
 
 - `web/`     — 前端（Next.js 16 App Router + antd + Tailwind v4）
 - `backend/` — 后端（Go，P2P + mDNS）
-- `build/`   — 构建产物（gitignored）
+- `scripts/` — 构建脚本（`build.py`，Python）
+- `build/`   — 构建产物（gitignored），`build/<平台>/` 下为二进制 + web/ 静态资源
 
 ## 常用命令
 
 ```bash
 make dev                    # 同时启动前端 :3000 + 后端 :8080
 make dev-web / dev-backend  # 单独启动
-make build                  # 静态导出前端 + 编译 Go 二进制到 build/
-make build-windows / build-darwin / build-darwin-amd64  # 交叉编译
+make build                  # 全部平台构建（等价 python3 scripts/build.py）
+make build-linux / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
+python3 scripts/build.py windows darwin   # 脚本直接调用，可多平台
+python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 ```
 
 ## 后端约定
