@@ -3,16 +3,14 @@ package model
 
 // NodeInfo 节点信息。
 type NodeInfo struct {
-	ID              string  `json:"id"`
-	Hostname        string  `json:"hostname"`
-	IP              string  `json:"ip"`
-	OS              string  `json:"os"`
-	SoftwareVersion string  `json:"softwareVersion"`
-	Status          string  `json:"status"` // online / offline
-	CPUUsage        float64 `json:"cpuUsage"`
-	MemUsage        float64 `json:"memUsage"` // GB
-	Uptime          string  `json:"uptime"`
-	ListenAddr      string  `json:"listenAddr"`
+	ID              string `json:"id"`
+	Hostname        string `json:"hostname"`
+	IP              string `json:"ip"`
+	OS              string `json:"os"`
+	SoftwareVersion string `json:"softwareVersion"`
+	Status          string `json:"status"` // online / offline
+	Uptime          string `json:"uptime"`
+	ListenAddr      string `json:"listenAddr"`
 }
 
 // FolderInfo 共享文件夹信息。

@@ -13,7 +13,7 @@ import NodeInfoCard from './node_info_card'
 
 /**
  * 节点卡片。
- * 展示某个节点（主机）的基本信息：主机名、IP、操作系统、CPU/内存占用、运行时间，
+ * 展示某个节点（主机）的基本信息：主机名、IP、操作系统、软件版本、运行时间，
  * 以及该节点共享的文件夹；共享文件夹以文件夹卡片的形式纵向堆叠展示。
  * 布局参考手绘稿：节点信息在上，文件夹卡片在下。
  */
@@ -23,53 +23,13 @@ export interface HostInfo {
   ip: string
   os: string
   status: 'online' | 'offline'
-  cpuUsage: number
-  memUsage: number
   uptime: string
   /** 节点上运行的程序版本 */
   softwareVersion: string
   folders: FolderInfo[]
 }
 
-const defaultHost: HostInfo = {
-  id: 'node-01',
-  hostname: 'file-server',
-  ip: '192.168.1.100',
-  os: 'Arch Linux x86_64',
-  status: 'online',
-  cpuUsage: 23,
-  memUsage: 8.5,
-  uptime: '12 天 4 小时',
-  softwareVersion: 'v2.3.1',
-  folders: [
-    {
-      id: 'folder-share',
-      name: '共享资料',
-      projectCount: 6,
-      fileCount: 1284,
-      totalSize: 42.5 * 1024 * 1024 * 1024,
-      updatedAt: '刚刚',
-    },
-    {
-      id: 'folder-projects',
-      name: '项目归档',
-      projectCount: 18,
-      fileCount: 342,
-      totalSize: 12.8 * 1024 * 1024 * 1024,
-      updatedAt: '昨天',
-    },
-    {
-      id: 'folder-backup',
-      name: '备份空间',
-      projectCount: 3,
-      fileCount: 96,
-      totalSize: 208 * 1024 * 1024 * 1024,
-      updatedAt: '3 天前',
-    },
-  ],
-}
-
-export default function HostCard({ host = defaultHost }: { host?: HostInfo }) {
+export default function HostCard({ host }: { host: HostInfo }) {
   const online = host.status === 'online'
 
   return (
@@ -121,8 +81,6 @@ export default function HostCard({ host = defaultHost }: { host?: HostInfo }) {
           ip: host.ip,
           os: host.os,
           softwareVersion: host.softwareVersion,
-          cpuUsage: host.cpuUsage,
-          memUsage: host.memUsage,
           uptime: host.uptime,
         }}
       />

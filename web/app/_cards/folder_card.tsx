@@ -6,14 +6,12 @@ import { ProCard } from '@ant-design/pro-components'
 
 /**
  * 文件夹卡片。
- * 展示共享文件夹的核心信息：文件夹名、含有的项目数、文件数与总大小。
+ * 展示共享文件夹的核心信息：文件夹名、文件数与总大小。
  * 布局参考手绘稿：名称 + 顶部图标，下方为统计信息行。
  */
 export interface FolderInfo {
   id: string
   name: string
-  /** 该文件夹下含有的项目数 */
-  projectCount: number
   /** 总大小（字节） */
   totalSize: number
   /** 文件数量（可选） */
@@ -43,7 +41,6 @@ export default function FolderCard({
   className?: string
 }) {
   const stats = [
-    { label: '项目', value: String(folder.projectCount) },
     { label: '文件', value: String(folder.fileCount ?? 0) },
     { label: '总大小', value: formatSize(folder.totalSize) },
   ]

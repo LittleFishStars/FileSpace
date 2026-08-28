@@ -5,16 +5,14 @@ import { Collapse } from 'antd'
 import {
   ClockCircleOutlined,
   ClusterOutlined,
-  DatabaseOutlined,
   LaptopOutlined,
   TagsOutlined,
-  ThunderboltOutlined,
   WifiOutlined,
 } from '@ant-design/icons'
 
 /**
  * 节点信息卡片。
- * 抽象出节点的运行信息：IP、操作系统、软件版本、CPU/内存占用、运行时间，
+ * 抽象出节点的运行信息：IP、操作系统、软件版本、运行时间，
  * 以折叠卡片的形式呈现（默认折叠）。
  */
 export interface NodeInfo {
@@ -22,8 +20,6 @@ export interface NodeInfo {
   os: string
   /** 节点上运行的程序版本 */
   softwareVersion: string
-  cpuUsage: number
-  memUsage: number
   uptime: string
 }
 
@@ -55,8 +51,6 @@ export default function NodeInfoCard({ info }: { info: NodeInfo }) {
     { icon: <WifiOutlined />, label: 'IP 地址', value: info.ip },
     { icon: <LaptopOutlined />, label: '操作系统', value: info.os },
     { icon: <TagsOutlined />, label: '软件版本', value: info.softwareVersion },
-    { icon: <ThunderboltOutlined />, label: 'CPU 占用', value: `${info.cpuUsage}%` },
-    { icon: <DatabaseOutlined />, label: '内存占用', value: `${info.memUsage} GB` },
     { icon: <ClockCircleOutlined />, label: '运行时间', value: info.uptime },
   ]
 

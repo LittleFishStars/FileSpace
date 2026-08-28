@@ -1,17 +1,16 @@
 'use client'
 
-import React, {useSyncExternalStore} from 'react';
-import {Segmented} from 'antd';
+import React, {useEffect, useState, useSyncExternalStore} from 'react';
+import {Alert, Empty, Segmented, Spin} from 'antd';
 import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
-import HostCard from '../_cards/host_card';
+import HostCard, {type HostInfo} from '../_cards/host_card';
 import {useTheme, type ThemeMode} from './app_theme';
 
 /**
  * 客户端挂载检测：服务端水合前为 false，客户端挂载后为 true。
  * 用它在客户端才渲染 ProLayout，避免服务端渲染依赖 window.matchMedia 的
  * 响应式布局（screen-md 等）导致 hydration mismatch。
- * 相比 useEffect + setState 的门控，这里用 useSyncExternalStore 更符合 React 惯例。
  */
 function subscribeNoop() {
     return () => {};
@@ -25,23 +24,103 @@ function getServerSnapshot() {
     return false;
 }
 
+// 后端 API 数据类型（与 backend/internal/model 对齐）
+interface NodeInfo {
+    id: string;
+    hostname: string;
+    ip: string;
+    os: string;
+    softwareVersion: string;
+    status: string;
+    uptime: string;
+    listenAddr: string;
+}
+
+interface FolderInfo {
+    id: string;
+    name: string;
+    path: string;
+    fileCount: number;
+    totalSize: number;
+    updatedAt: string;
+}
+
+interface PeerInfo {
+    node: NodeInfo;
+    folders: FolderInfo[];
+    online: boolean;
+    lastSeen: string;
+}
+
+async function fetchJSON<T>(url: string): Promise<T> {
+    const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error(`${url} 返回 ${res.status}`);
+    }
+    return res.json() as Promise<T>;
+}
+
+/** 把后端 NodeInfo + folders 转换为前端 HostInfo */
+function toHostInfo(node: NodeInfo, folders: FolderInfo[]): HostInfo {
+    return {
+        id: node.id,
+        hostname: node.hostname,
+        ip: node.ip,
+        os: node.os,
+        status: node.status === 'online' ? 'online' : 'offline',
+        uptime: node.uptime,
+        softwareVersion: node.softwareVersion,
+        folders: folders.map((f) => ({
+            id: f.id,
+            name: f.name,
+            fileCount: f.fileCount,
+            totalSize: f.totalSize,
+            updatedAt: f.updatedAt,
+        })),
+    };
+}
+
 /**
  * 应用外壳。
- * 负责页面顶层布局（ProLayout 顶部导航 + PageContainer），并在右上角提供主题切换控件。
- *
- * 主题控件使用 antd Segmented 实现「跟随系统 / 浅色 / 深色」三挡切换，
- * 右侧留出一点边距，避免贴边。
- *
- * ProLayout 依赖 window.matchMedia 计算响应式 class（如 screen-md），
- * 服务端渲染时 window 不可用，导致服务端/客户端 HTML 属性不一致，
- * 从而触发 hydration mismatch。因此本组件在挂载完成前不渲染 ProLayout，
- * 待 useEffect 后将 mounted 置为 true 再渲染，确保仅客户端构建该子树。
+ * 负责页面顶层布局（ProLayout 顶部导航 + PageContainer），右上角提供主题切换控件，
+ * 并加载后端数据：本节点 + mDNS 发现的其他节点（含各自共享文件夹）。
  */
 export default function HostShell() {
     const mounted = useSyncExternalStore(subscribeNoop, getClientSnapshot, getServerSnapshot);
     const {mode, setMode} = useTheme();
+    const [hosts, setHosts] = useState<HostInfo[] | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
-    // 挂载前渲染一个占位，避免服务端渲染 ProLayout（否则会产生响应式 class 不一致）。
+    useEffect(() => {
+        let cancelled = false;
+        async function load() {
+            try {
+                const [node, folders, peers] = await Promise.all([
+                    fetchJSON<NodeInfo>('/api/node'),
+                    fetchJSON<FolderInfo[]>('/api/folders'),
+                    fetchJSON<PeerInfo[]>('/api/peers'),
+                ]);
+                if (cancelled) return;
+                const list: HostInfo[] = [toHostInfo(node, folders)];
+                for (const peer of peers) {
+                    if (peer.node && peer.node.id !== node.id) {
+                        list.push(toHostInfo(peer.node, peer.folders));
+                    }
+                }
+                setHosts(list);
+            } catch (e) {
+                if (!cancelled) {
+                    setError(e instanceof Error ? e.message : '无法连接后端服务');
+                }
+            }
+        }
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    // 挂载前渲染占位，避免服务端渲染 ProLayout。
     if (!mounted) {
         return <div className="min-h-screen"/>;
     }
@@ -51,6 +130,27 @@ export default function HostShell() {
         {label: '浅色', value: 'light' as ThemeMode, icon: <SunOutlined/>},
         {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
     ];
+
+    let content: React.ReactNode;
+    if (error) {
+        content = <Alert type="error" showIcon message="加载失败" description={error}/>;
+    } else if (hosts === null) {
+        content = (
+            <div className="flex justify-center py-16">
+                <Spin size="large"/>
+            </div>
+        );
+    } else if (hosts.length === 0) {
+        content = <Empty description="暂无节点"/>;
+    } else {
+        content = (
+            <div className="flex flex-col gap-4">
+                {hosts.map((host) => (
+                    <HostCard key={host.id} host={host}/>
+                ))}
+            </div>
+        );
+    }
 
     return (
         <ProLayout
@@ -74,7 +174,7 @@ export default function HostShell() {
                 }}
             >
                 <div className="mx-auto max-w-2xl">
-                    <HostCard/>
+                    {content}
                 </div>
             </PageContainer>
         </ProLayout>
