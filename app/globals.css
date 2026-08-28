@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
+/* 明暗切换改为 class 驱动：AppTheme 会在 <html> 上开关 .dark，
+   使 Tailwind dark: 变体、antd 主题与页面背景跟随同一套手动/系统主题，
+   避免手动覆盖与系统配色不一致。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
+}
+
+/* 与 antd 深色主题的表面色保持一致，避免页面边缘与组件背景出现色差 */
+.dark {
+  --background: #141414;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -10,13 +23,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
