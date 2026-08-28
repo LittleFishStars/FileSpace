@@ -181,16 +181,19 @@ function FolderBrowser() {
                                 下载
                             </Button>
                         </Tooltip>
-                        <Tooltip title="预览">
-                            <Button
-                                type="link"
-                                size="small"
-                                icon={<EyeOutlined/>}
-                                onClick={() => setPreviewFile(record)}
-                            >
-                                查看
-                            </Button>
-                        </Tooltip>
+                        {/* 后端判断不可预览的文件（二进制等）不显示"查看"按钮 */}
+                        {record.previewable && (
+                            <Tooltip title="预览">
+                                <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<EyeOutlined/>}
+                                    onClick={() => setPreviewFile(record)}
+                                >
+                                    查看
+                                </Button>
+                            </Tooltip>
+                        )}
                     </Space>
                 ),
         },

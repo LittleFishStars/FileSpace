@@ -26,6 +26,8 @@ export interface ApiFileInfo {
   size: number
   modTime: string
   isDir: boolean
+  /** 是否可在线预览（后端检测：文本类或 FileViewer 可渲染） */
+  previewable: boolean
 }
 
 export interface ApiPeerInfo {

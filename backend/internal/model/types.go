@@ -30,6 +30,9 @@ type FileInfo struct {
 	Size    int64  `json:"size"`
 	ModTime string `json:"modTime"`
 	IsDir   bool   `json:"isDir"`
+	// Previewable 是否可在线预览：文本类（泛指所有能以文本读取的文件，
+	// 含代码/CSV/JSON/Markdown/HTML/XML 等）或非文本但 FileViewer 可渲染的（图片/视频/PDF/Office）。
+	Previewable bool `json:"previewable"`
 }
 
 // PeerInfo 发现的其他节点（含其共享文件夹）。

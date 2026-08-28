@@ -1,6 +1,7 @@
 package share
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -30,12 +31,14 @@ func (m *Manager) Tree(id, rel string) ([]model.FileInfo, error) {
 		if err != nil {
 			continue
 		}
+		fullPath := filepath.Join(full, e.Name())
 		files = append(files, model.FileInfo{
-			Name:    e.Name(),
-			Path:    filepath.ToSlash(filepath.Join(rel, e.Name())),
-			Size:    info.Size(),
-			ModTime: info.ModTime().Format(time.RFC3339),
-			IsDir:   e.IsDir(),
+			Name:        e.Name(),
+			Path:        filepath.ToSlash(filepath.Join(rel, e.Name())),
+			Size:        info.Size(),
+			ModTime:     info.ModTime().Format(time.RFC3339),
+			IsDir:       e.IsDir(),
+			Previewable: !e.IsDir() && isPreviewable(fullPath),
 		})
 	}
 	// 目录在前，名称升序
@@ -46,6 +49,32 @@ func (m *Manager) Tree(id, rel string) ([]model.FileInfo, error) {
 		return files[i].Name < files[j].Name
 	})
 	return files, nil
+}
+
+// isPreviewable 判断文件是否可在线预览：
+//  1. 文本类（泛指所有能以文本读取的文件，含代码/CSV/JSON/Markdown/HTML/XML 等）——按内容嗅探 MIME
+//  2. 非文本但 FileViewer 可渲染的：图片 / 视频 / PDF / Office（docx/pptx/xlsx 本质是 zip，按扩展名补判）
+func isPreviewable(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	mime := http.DetectContentType(buf[:n])
+	if strings.HasPrefix(mime, "text/") {
+		return true
+	}
+	if strings.HasPrefix(mime, "image/") || strings.HasPrefix(mime, "video/") || mime == "application/pdf" {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx":
+		return true
+	}
+	return false
 }
 
 // ResolveFile 把共享目录内的相对路径解析为磁盘绝对路径（供下载）。
