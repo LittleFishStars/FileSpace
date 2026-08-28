@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 🖥️ 零配置共享：`cd 某文件夹 && filespace` 一键共享当前目录，也可指定共享目录/文件
+- 🖥️ 零配置共享：`cd 某文件夹 && filespace` 一键共享当前目录；未指定目录时自动恢复上次退出前共享的目录，也可指定共享目录/文件
 - 📡 mDNS 自动发现：局域网内节点自动互相发现，无需手动配置地址
 - 🌐 Web 界面：浏览器查看所有节点及其共享文件夹，支持文件浏览与下载
 - 🖧 P2P 架构：无中心服务器，节点对等，断网可用
@@ -111,6 +111,8 @@ make dev-backend   # 后端（:8080）
 浏览器打开 `http://localhost:3000`；生产环境前后端同源（后端托管 `build/web/`），无需单独部署前端。
 
 配置见 `backend/config.yaml`：监听端口、共享目录列表、mDNS 服务名、状态采集间隔等。
+
+未指定共享目录（命令行与配置文件均未设置）时，后端会恢复**上次退出前共享的目录**；每次正常退出（Ctrl+C / kill / 终端关闭）前会把当前共享目录记录到用户配置目录下的 `filespace/last-shared.yaml`（Linux `~/.config/filespace/`、macOS `~/Library/Application Support/filespace/`、Windows `%AppData%\filespace\`）。删除该文件即可回到「默认共享当前目录」的行为。
 
 ## API 一览
 

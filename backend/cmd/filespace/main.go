@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -51,7 +52,7 @@ func usage() {
 在任意文件夹执行 filespace 即可共享该文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
 
 参数:
-  [目录...]               要共享的文件夹（可多个）；缺省共享当前目录
+  [目录...]               要共享的文件夹（可多个）；缺省恢复上次退出前共享的目录，无记录时共享当前目录
   -c, --config <文件>     配置文件路径（YAML）
   -p, --port <端口>       监听端口（默认 8080）
   -h, --help              显示本帮助信息
@@ -60,12 +61,12 @@ func usage() {
   help                    显示本帮助信息
 
 示例:
-  filespace                        共享当前目录
+  filespace                        恢复上次共享的目录（无记录时共享当前目录）
   filespace ~/docs /mnt/data       共享多个目录
   filespace -p 9000 ~/docs         指定端口
   filespace -c config.yaml         使用配置文件
 
-配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders。
+配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录。
 `)
 }
 
@@ -109,9 +110,18 @@ func main() {
 		}
 	}
 	if len(cfg.Shared) == 0 {
-		cwd, _ := os.Getwd()
-		cfg.Shared = []filespace.SharedFolder{{Path: cwd, Name: filepath.Base(cwd)}}
-		fmt.Printf("未指定共享目录，默认共享当前目录: %s\n", cwd)
+		// 未指定共享目录：优先恢复上次退出前共享的目录，无记录时回退到当前目录
+		if last := filespace.LoadLastShared(); len(last) > 0 {
+			cfg.Shared = make([]filespace.SharedFolder, 0, len(last))
+			for _, p := range last {
+				cfg.Shared = append(cfg.Shared, filespace.SharedFolder{Path: p, Name: filepath.Base(p)})
+			}
+			fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(last, ", "))
+		} else {
+			cwd, _ := os.Getwd()
+			cfg.Shared = []filespace.SharedFolder{{Path: cwd, Name: filepath.Base(cwd)}}
+			fmt.Printf("未指定共享目录，默认共享当前目录: %s\n", cwd)
+		}
 	}
 
 	// 组件
@@ -153,11 +163,21 @@ func main() {
 		}
 	}()
 
-	// 优雅退出（Ctrl+C）
+	// 优雅退出（Ctrl+C / kill / 终端关闭）
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
 	fmt.Println("\n正在退出...")
+	// 记录本次共享的目录，供下次未指定目录时恢复
+	paths := make([]string, 0, len(cfg.Shared))
+	for _, f := range cfg.Shared {
+		paths = append(paths, f.Path)
+	}
+	if err := filespace.SaveLastShared(paths); err != nil {
+		log.Printf("记录共享目录失败: %v", err)
+	} else {
+		fmt.Printf("已记录本次共享的目录: %s\n", strings.Join(paths, ", "))
+	}
 	cancel()
 	shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
 	defer done()
