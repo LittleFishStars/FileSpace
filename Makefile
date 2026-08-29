@@ -8,8 +8,10 @@
 #             make pack-windows / make pack-linux → 指定平台安装包
 # 清理：      make clean
 #
-# 构建/打包逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/<平台>/：
-#   filespace（后端 API）+ web/（Next.js standalone 前端，运行入口：node web/start.js）
+# 构建/打包逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/ 下：
+#   build/web/                前端（Next.js standalone，平台无关，仅需 Node.js）
+#   build/backend/<平台>/     后端（filespace，按平台分目录）
+# 运行：cd build && node web/start.js（自动拉起 build/backend/<平台>/ 下的后端）
 # 安装包输出到 build/packages/<平台>/。
 
 .PHONY: dev dev-web dev-backend build build-linux build-windows build-darwin build-darwin-amd64 pack pack-windows pack-linux clean

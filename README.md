@@ -38,7 +38,7 @@
 │   │   └── state/        # 本地状态（上次共享记录、运行锁）
 │   ├── config.yaml       # 配置示例
 │   └── version.go        # 版本号
-└── build/                # 构建产物（gitignored）：build/<平台>/ 下为后端二进制 + web/ 前端
+└── build/                # 构建产物（gitignored）：build/web/（前端）+ build/backend/<平台>/（后端）
 ```
 
 ## 架构
@@ -64,9 +64,9 @@
 - 后端：纯 Go 二进制（跨平台）。
 - 前端：Next.js standalone 服务器，运行需要 **Node.js 18.18+**（仅运行产物，无需 `pnpm install`，构建时已内置最小 `node_modules`）。
 
-### 一键构建（前后端统一输出到 build/<平台>/）
+### 一键构建（前后端产物分开，后端按平台分目录）
 
-构建由 `scripts/build.py` 完成：先构建 Next.js standalone 前端（`.next/standalone` + 静态资源 + `start.js` 组装为 `web/` 分发目录），再按平台交叉编译后端（`filespace`）。
+构建由 `scripts/build.py` 完成：前端（平台无关）只构建一次输出到 `build/web/`，后端按平台交叉编译输出到 `build/backend/<平台>/`。
 
 ```bash
 make build                 # 编译全部平台（等价 python3 scripts/build.py）
@@ -75,9 +75,9 @@ make build-windows         # 只编译 Windows amd64
 make build-darwin          # 只编译 macOS Apple Silicon
 make build-darwin-amd64    # 只编译 macOS Intel
 # 产物：
-#   build/<平台>/filespace         → 后端（纯 API）
-#   build/<平台>/web/              → Next.js standalone 前端（server.js + node_modules + .next/ + start.js）
-cd build/linux && node web/start.js
+#   build/web/                     → 前端（Next.js standalone，平台无关，仅需 Node.js，只构建一次）
+#   build/backend/<平台>/filespace → 后端（按平台分目录）
+cd build && node web/start.js
 ```
 
 也可直接调用脚本，支持一次指定多个平台：
@@ -90,7 +90,7 @@ python3 scripts/build.py --list       # 列出支持的平台
 python3 scripts/build.py --clean      # 清理构建产物
 ```
 
-`build/<平台>/web/start.js` 自动定位同级 `filespace` 后端（或 PATH 中的 `filespace`）并启动。
+`build/web/start.js` 自动定位后端：优先 `build/backend/<当前平台>/` 下的 `filespace`（或同级的 `filespace`），找不到时再查 PATH（安装包场景：`/usr/bin/filespace`）。前端产物已剔除平台特定 native 依赖（`@next/swc-*`、sharp），在任何平台仅需 Node.js 即可运行，可与任意平台的 `build/backend/<平台>/` 组合分发。
 
 ### 打包安装包
 
@@ -117,7 +117,7 @@ python3 scripts/build.py pack linux      # Linux
 
 ### 交叉编译（后端为纯 Go，可跨平台构建）
 
-支持 **Linux / macOS / Windows**（含运行时间与系统名读取的平台实现）；前端 `build/<平台>/web/` 与平台无关，随对应平台目录一同分发（目标机器需安装 Node.js）。
+支持 **Linux / macOS / Windows**（含运行时间与系统名读取的平台实现）；前端 `build/web/` 与平台无关（已剔除 native 依赖），一次构建即可与任意平台的 `build/backend/<平台>/` 组合分发（目标机器需安装 Node.js）。
 
 ### 开发
 

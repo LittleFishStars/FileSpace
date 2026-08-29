@@ -15,18 +15,16 @@
     python3 scripts/build.py pack windows      # Windows：.msi 安装包
     python3 scripts/build.py pack linux        # Linux：deb + pacman + AppImage
 
-产物输出到 build/<平台>/（每个平台目录是一个完整可分发单元）：
-    build/linux/filespace         + build/linux/web/
-    build/windows/filespace.exe   + build/windows/web/
-    build/darwin/filespace        + build/darwin/web/
-    build/darwin-amd64/filespace  + build/darwin-amd64/web/
+产物输出到 build/ 下，前后端分开、后端按平台分目录：
+    build/web/                前端（Next.js standalone，平台无关，仅需 Node.js，只构建一次）
+    build/backend/<平台>/     后端（filespace，按平台交叉编译）
 
 两个独立程序（前端即 Next.js 本身，无额外启动器程序）：
     filespace      后端：P2P + mDNS + 文件共享 API（纯 API，不托管界面）
     web/           前端：Next.js standalone 服务器（server.js + node_modules +
                    .next/ + public/ + start.js）；node web/start.js 启动时读取后端
                    锁文件获取端口，后端未启动则自动拉起一个，并把 /api 反代给后端
-                   （运行入口：cd build/<平台>/ && node web/start.js）
+                   （运行：cd build && node web/start.js）
 
 安装包输出到 build/packages/<平台>/：
     build/packages/windows/FileSpace-<版本>.msi
@@ -132,12 +130,6 @@ def binary_name(platform):
     return APP_BINARY + ".exe" if platform.goos == "windows" else APP_BINARY
 
 
-def web_binary_name(platform):
-    """旧版前端程序（filespace-web）文件名，仅用于清理历史遗留产物。"""
-    name = APP_BINARY + "-web"
-    return name + ".exe" if platform.goos == "windows" else name
-
-
 # ============================================================
 # 构建
 # ============================================================
@@ -166,8 +158,10 @@ def go_build(platform, out_dir, binary, pkg):
     run(["go", "build", "-o", binary, pkg], cwd=BACKEND_DIR, env=env)
 
 
-def build_backend(platform, out_dir):
-    """交叉编译后端程序（filespace：纯 API，P2P + mDNS）。"""
+def build_backend(platform):
+    """交叉编译后端程序（filespace：纯 API，P2P + mDNS）到 build/backend/<平台>/。"""
+    out_dir = os.path.join(BUILD_DIR, "backend", platform.name)
+    os.makedirs(out_dir, exist_ok=True)
     go_build(platform, out_dir, os.path.join(out_dir, binary_name(platform)), "./cmd/filespace")
 
 
@@ -199,13 +193,45 @@ def patch_standalone_deps(web_target):
             shutil.copy2(real, dst)
 
 
-def prepare_web_dist(plat_dir):
-    """组装前端分发目录 web/（Next.js standalone 服务器）。
+def strip_native_deps(web_target):
+    """删除平台特定 native 依赖，使前端分发平台无关（跨平台共用一份 web/）。
+
+    经实测：Next 16 standalone 运行时为纯 JS（Turbopack 产物已编译、
+    images.unoptimized 时不再加载 sharp），@next/swc-* 与 sharp/@img/* 均可安全移除，
+    产物在任何平台仅需 Node.js 即可运行。
+    """
+    nm = os.path.join(web_target, "node_modules")
+    # @next/swc-*（各平台 native 绑定，如 swc-linux-x64-gnu）
+    next_dir = os.path.join(nm, "@next")
+    if os.path.isdir(next_dir):
+        for name in list(os.listdir(next_dir)):
+            if name.startswith("swc"):
+                shutil.rmtree(os.path.join(next_dir, name))
+    # sharp 及其依赖树（顶层 + pnpm store 中的 @img/* 等）
+    for rel in ("sharp", "detect-libc"):
+        p = os.path.join(nm, rel)
+        if os.path.isdir(p):
+            shutil.rmtree(p)
+    pnpm = os.path.join(nm, ".pnpm")
+    if os.path.isdir(pnpm):
+        for entry in list(os.listdir(pnpm)):
+            if entry.startswith("@img+") or entry.startswith("sharp@") or entry.startswith("detect-libc@"):
+                shutil.rmtree(os.path.join(pnpm, entry))
+        pnpm_nm = os.path.join(pnpm, "node_modules")
+        if os.path.isdir(pnpm_nm):
+            for entry in ("@img", "sharp", "detect-libc"):
+                p = os.path.join(pnpm_nm, entry)
+                if os.path.isdir(p):
+                    shutil.rmtree(p)
+
+
+def prepare_web_dist():
+    """组装平台无关的前端分发目录 build/web/（Next.js standalone 服务器）。
 
     结构：server.js + package.json + node_modules/ + .next/（server 与 static）+
     public/ + start.js；运行入口：node web/start.js（读锁文件 / 自动拉起后端）。
     """
-    web_target = os.path.join(plat_dir, "web")
+    web_target = os.path.join(BUILD_DIR, "web")
     if os.path.isdir(web_target):
         shutil.rmtree(web_target)
     os.makedirs(web_target)
@@ -218,53 +244,45 @@ def prepare_web_dist(plat_dir):
     if os.path.isdir(os.path.join(WEB_DIR, "public")):
         shutil.copytree(os.path.join(WEB_DIR, "public"),
                         os.path.join(web_target, "public"), dirs_exist_ok=True)
-    # 补齐 pnpm trace 遗漏的 next 运行时依赖
+    # 补齐 pnpm trace 遗漏的 next 运行时依赖，并移除平台特定 native 依赖
     patch_standalone_deps(web_target)
+    strip_native_deps(web_target)
     # 前端启动器（读锁文件 / 拉起后端 / 启动 server.js）
     shutil.copy2(os.path.join(WEB_DIR, "start.js"), os.path.join(web_target, "start.js"))
 
 
-def build_one(platform):
-    """构建单个平台（假设前端 standalone 已存在）：组装前端 + 交叉编译后端。"""
-    plat_dir = os.path.join(BUILD_DIR, platform.name)
-    os.makedirs(plat_dir, exist_ok=True)
-
-    prepare_web_dist(plat_dir)
-    build_backend(platform, plat_dir)
-
-    # 清理历史遗留产物（旧版前端程序二进制）
-    legacy = os.path.join(plat_dir, web_binary_name(platform))
-    if os.path.isfile(legacy):
-        os.remove(legacy)
-
-
 def build_platforms(targets):
-    """构建指定平台列表：前端构建一次，后端按平台逐个交叉编译。"""
+    """构建指定平台列表：前端（平台无关）组装一次，后端按平台逐个交叉编译。"""
     build_web()
+    prepare_web_dist()
+    print("\n✅ 前端产物：build/web/  （运行：cd build && node web/start.js）")
     for name in targets:
         p = PLATFORMS[name]
         print("\n[%s] %s" % (p.name, p.description))
-        build_one(p)
-        print("   ✅ %s" % os.path.join(BUILD_DIR, p.name, binary_name(p)))
+        build_backend(p)
+        print("   ✅ %s" % os.path.join(BUILD_DIR, "backend", p.name, binary_name(p)))
 
     print("\n✅ 构建完成，产物目录：")
+    print("   build/web/                前端（平台无关，仅需 Node.js）")
     for name in targets:
         p = PLATFORMS[name]
-        print("   build/%s/  （运行：cd build/%s && node web/start.js）" % (name, name))
+        print("   build/backend/%s/  （后端，与 build/web 同级组合成可分发单元）" % name)
 
 
 def ensure_build(platform):
     """确保某平台构建产物存在（存在则复用，缺失则先构建）。"""
-    plat_dir = os.path.join(BUILD_DIR, platform.name)
-    binary = os.path.join(plat_dir, binary_name(platform))
-    web_server = os.path.join(plat_dir, "web", "server.js")
+    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
+    binary = os.path.join(backend_dir, binary_name(platform))
+    web_server = os.path.join(BUILD_DIR, "web", "server.js")
     if os.path.isfile(binary) and os.path.isfile(web_server):
-        print("   复用已有构建产物：build/%s/" % platform.name)
+        print("   复用已有构建产物：build/web/ + build/backend/%s/" % platform.name)
         return
     print("   构建产物缺失，先构建 %s ..." % platform.name)
     if not os.path.isdir(WEB_STANDALONE):
         build_web()
-    build_one(platform)
+    if not os.path.isfile(os.path.join(BUILD_DIR, "web", "server.js")):
+        prepare_web_dist()
+    build_backend(platform)
 
 
 # ============================================================
@@ -329,10 +347,10 @@ def write_desktop(path):
         f.write(content)
 
 
-def install_linux_files(staging_usr_share, source_plat_dir, icon):
-    """组装 Linux 安装布局（usr/share/ 下）：filespace web/ + 桌面入口 + 图标。"""
+def install_linux_files(staging_usr_share, icon):
+    """组装 Linux 安装布局（usr/share/ 下）：前端 web/ + 桌面入口 + 图标。"""
     web_target = os.path.join(staging_usr_share, "filespace", "web")
-    shutil.copytree(os.path.join(source_plat_dir, "web"), web_target)
+    shutil.copytree(os.path.join(BUILD_DIR, "web"), web_target)
 
     desktop = os.path.join(staging_usr_share, "applications", "filespace.desktop")
     os.makedirs(os.path.dirname(desktop), exist_ok=True)
@@ -396,8 +414,9 @@ def _msi_installer(platform, version, msi_out):
     """
     require_tool("wixl")
     require_tool("wixl-heat")
-    plat_dir = os.path.join(BUILD_DIR, platform.name)
-    web_dir = os.path.join(plat_dir, "web")
+    # 前端平台无关（build/web），后端按平台（build/backend/<平台>/）；SourceDir 统一指向 build
+    web_dir = os.path.join(BUILD_DIR, "web")
+    exe_rel = os.path.join("backend", platform.name, binary_name(platform))
     work = os.path.join(PACKAGES_DIR, "windows")
     os.makedirs(work, exist_ok=True)
 
@@ -407,7 +426,7 @@ def _msi_installer(platform, version, msi_out):
         for n in sorted(names):
             files.append(os.path.join(root, n))
     proc = subprocess.run(
-        ["wixl-heat", "-p", plat_dir, "--component-group", "Files",
+        ["wixl-heat", "-p", BUILD_DIR, "--component-group", "Files",
          "--directory-ref", "INSTALLFOLDER"],
         input="\n".join(files) + "\n", text=True, capture_output=True)
     if proc.returncode != 0:
@@ -440,7 +459,7 @@ def _msi_installer(platform, version, msi_out):
 %(
 web_tree)s
           <Component Id="cmpEXE" Guid="*">
-            <File Id="filEXE" KeyPath="yes" Source="$(var.SourceDir)/filespace.exe"/>
+            <File Id="filEXE" KeyPath="yes" Source="$(var.SourceDir)/%(exe_rel)s"/>
           </Component>
         </Directory>
       </Directory>
@@ -452,10 +471,11 @@ web_tree)s
   </Product>
 </Wix>
 """ % {"prod_id": prod_id, "name": APP_NAME, "version": version,
-       "upgrade_code": upgrade_code, "web_tree": web_tree, "refs": refs})
+       "upgrade_code": upgrade_code, "web_tree": web_tree, "refs": refs,
+       "exe_rel": exe_rel.replace(os.sep, "/")})
 
     # 4) wixl 编译生成 .msi
-    run(["wixl", "-o", os.path.abspath(msi_out), "-D", "SourceDir=" + plat_dir, wxs])
+    run(["wixl", "-o", os.path.abspath(msi_out), "-D", "SourceDir=" + BUILD_DIR, wxs])
 
 
 # ============================================================
@@ -498,18 +518,18 @@ def _deb_package(platform, version, deb_out, icon):
     if os.path.isdir(staging):
         shutil.rmtree(staging)
 
-    source_plat_dir = os.path.join(BUILD_DIR, platform.name)
+    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
 
     # 后端二进制（strip 副本）+ 前端入口脚本
     usr_bin = os.path.join(staging, "usr", "bin")
     os.makedirs(usr_bin, exist_ok=True)
-    strip_copy(os.path.join(source_plat_dir, "filespace"),
-               os.path.join(usr_bin, "filespace"))
+    strip_copy(os.path.join(backend_dir, binary_name(platform)),
+               os.path.join(usr_bin, binary_name(platform)))
     write_web_entry(os.path.join(usr_bin, "filespace-web"),
                     "/usr/share/filespace/web/start.js")
 
     # web / 桌面入口 / 图标
-    install_linux_files(os.path.join(staging, "usr", "share"), source_plat_dir, icon)
+    install_linux_files(os.path.join(staging, "usr", "share"), icon)
 
     # DEBIAN/control
     control = (
@@ -541,17 +561,17 @@ def _pacman_package(platform, version, out_dir, icon):
         shutil.rmtree(work)
     os.makedirs(work)
 
-    source_plat_dir = os.path.join(BUILD_DIR, platform.name)
+    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
 
     # 组装 source 归档（strip 二进制 + web + 桌面入口 + 图标）
     tar_root = os.path.join(work, "tar-root")
     os.makedirs(tar_root, exist_ok=True)
-    strip_copy(os.path.join(source_plat_dir, "filespace"),
-               os.path.join(tar_root, "filespace"))
+    strip_copy(os.path.join(backend_dir, binary_name(platform)),
+               os.path.join(tar_root, binary_name(platform)))
     write_web_entry(os.path.join(tar_root, "filespace-web"),
                     "/usr/share/filespace/web/start.js")
     web_target = os.path.join(tar_root, "web")
-    shutil.copytree(os.path.join(source_plat_dir, "web"), web_target)
+    shutil.copytree(os.path.join(BUILD_DIR, "web"), web_target)
     write_desktop(os.path.join(tar_root, "filespace.desktop"))
     if icon:
         shutil.copy2(icon, os.path.join(tar_root, "filespace.png"))
@@ -606,7 +626,7 @@ def _appimage(platform, version, appimage_out, icon):
         shutil.rmtree(appdir)
     os.makedirs(appdir)
 
-    source_plat_dir = os.path.join(BUILD_DIR, platform.name)
+    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
 
     # AppRun：不改变用户工作目录（共享的是调用方 cwd），启动 Next.js 前端
     #（web/start.js 会自动拉起同目录下的 filespace 后端；需系统安装 nodejs）
@@ -618,9 +638,9 @@ def _appimage(platform, version, appimage_out, icon):
                 'exec node "$(dirname "$SELF")/web/start.js" "$@"\n')
     os.chmod(apprun, 0o755)
 
-    strip_copy(os.path.join(source_plat_dir, "filespace"),
-               os.path.join(appdir, "filespace"))
-    shutil.copytree(os.path.join(source_plat_dir, "web"),
+    strip_copy(os.path.join(backend_dir, binary_name(platform)),
+               os.path.join(appdir, binary_name(platform)))
+    shutil.copytree(os.path.join(BUILD_DIR, "web"),
                     os.path.join(appdir, "web"))
     write_desktop(os.path.join(appdir, "filespace.desktop"))
     if icon:
@@ -698,6 +718,15 @@ def do_pack(targets):
 def clean():
     """清理构建产物与安装包，保留 build/ 下的 Go 构建缓存。"""
     print("==> 清理构建产物 ...")
+    web_dir = os.path.join(BUILD_DIR, "web")
+    if os.path.isdir(web_dir):
+        shutil.rmtree(web_dir)
+        print("   已删除 %s" % web_dir)
+    backend_dir = os.path.join(BUILD_DIR, "backend")
+    if os.path.isdir(backend_dir):
+        shutil.rmtree(backend_dir)
+        print("   已删除 %s" % backend_dir)
+    # 旧版布局（build/<平台>/）清理
     for name in PLATFORMS:
         d = os.path.join(BUILD_DIR, name)
         if os.path.isdir(d):

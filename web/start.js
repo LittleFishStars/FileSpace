@@ -93,11 +93,25 @@ async function firstFreePort(start) {
   return 0;
 }
 
-// locateBackend 定位后端二进制：优先与 web/ 同级的 filespace，其次 PATH。
+// locateBackend 定位后端二进制，按优先级尝试：
+//  1. web/ 同级上一级的 filespace（build/filespace，单目录分发的兼容路径）
+//  2. build/backend/<平台>/filespace（前后端分开、后端按平台分目录的新布局）
+//  3. PATH 中的 filespace
 function locateBackend() {
   const name = process.platform === "win32" ? "filespace.exe" : "filespace";
-  const sibling = path.join(__dirname, "..", name);
-  if (fs.existsSync(sibling)) return sibling;
+  let platformDir;
+  if (process.platform === "win32") platformDir = "windows";
+  else if (process.platform === "darwin")
+    platformDir = process.arch === "arm64" ? "darwin" : "darwin-amd64";
+  else platformDir = "linux";
+
+  const candidates = [
+    path.join(__dirname, "..", name),
+    path.join(__dirname, "..", "backend", platformDir, name),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
   return name; // 依赖 PATH 查找
 }
 
