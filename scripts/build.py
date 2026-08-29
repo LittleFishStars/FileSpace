@@ -80,6 +80,11 @@ def clean():
     if os.path.isdir(EMBED_DIR):
         shutil.rmtree(EMBED_DIR)
         print("   已删除 %s" % EMBED_DIR)
+        # 恢复仓库占位文件 .gitkeep（被 git 强制跟踪，删除会使工作树不干净；
+        # 且 go:embed 编译期要求该目录存在，恢复后可直接 go run / make dev）
+        keep = os.path.join(EMBED_DIR, ".gitkeep")
+        os.makedirs(EMBED_DIR, exist_ok=True)
+        open(keep, "w", encoding="utf-8").close()
     packages_dir = os.path.join(BUILD_DIR, "packages")
     if os.path.isdir(packages_dir):
         shutil.rmtree(packages_dir)

@@ -31,6 +31,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 - Go 1.27，模块名 `filespace`；依赖：gopsutil（跨平台采集）、zeroconf（mDNS）、yaml.v3（配置）
 - 文件可预览性由**内容嗅探**判定（`http.DetectContentType`），`FileInfo.previewable` 供前端隐藏二进制文件的预览按钮，勿改回硬编码扩展名
 - `--web` 模式：`go:embed` 嵌入 `backend/cmd/filespace/web/` 下的前端静态资源，`HandlerWithStatic` 组合 API 路由与静态文件服务器
+- **开发模式 go run 依赖 embed 目录存在**：`//go:embed all:web` 在编译期要求 `backend/cmd/filespace/web/` 非空。仓库已提交 `.gitkeep` 占位（`git add -f` 强制跟踪，因目录被 gitignore），`scripts/dev.py` 启动后端前也会自动补齐（应对 `build.py --clean` 删除后直接 dev）；生产构建由 `build.py` 用真实静态资源覆盖该目录
 - 修改依赖后 `go mod tidy`；提交前 `gofmt` + `go vet` + `go build ./...`
 
 ## 前端约定
@@ -49,7 +50,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定：`backend/version.go` 当前为 `0.1.20`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
+- 版本号约定：`backend/version.go` 当前为 `0.1.22`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

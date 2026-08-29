@@ -33,7 +33,18 @@ def prepare_embed_dir():
     if os.path.isdir(EMBED_DIR):
         shutil.rmtree(EMBED_DIR)
     shutil.copytree(WEB_EXPORT, EMBED_DIR)
+    _restore_embed_placeholder()
     print("   ✅ %s" % EMBED_DIR)
+
+
+def _restore_embed_placeholder():
+    """恢复仓库占位文件 .gitkeep：
+    go:embed 编译期要求目录存在且非空，且该文件被 git 强制跟踪，
+    目录重建后需补回（空文件，对嵌入内容无影响），避免工作树显示 deleted。
+    """
+    keep = os.path.join(EMBED_DIR, ".gitkeep")
+    if not os.path.isfile(keep):
+        open(keep, "w", encoding="utf-8").close()
 
 
 def go_build(platform, out_dir, binary, pkg):

@@ -29,6 +29,22 @@ FRONTEND_PORT = 3000
 READY_TIMEOUT = 60
 POLL_INTERVAL = 0.3
 
+# go:embed 嵌入源目录：web.go 的 `//go:embed all:web` 要求该目录存在且含文件，
+# 否则 go run 直接编译失败。仓库已含 .gitkeep 占位；若被 build.py --clean 删除，
+# 此处自动补齐（dev 模式后端只提供 API，前端由 Next dev server 反代，占位内容无影响）。
+EMBED_DIR = BACKEND_DIR / "cmd" / "filespace" / "web"
+
+
+def ensure_embed_dir() -> None:
+    """确保 go:embed 嵌入源目录存在且非空（缺失/为空时写入占位文件）。"""
+    if EMBED_DIR.is_dir() and any(EMBED_DIR.iterdir()):
+        return
+    EMBED_DIR.mkdir(parents=True, exist_ok=True)
+    placeholder = EMBED_DIR / ".gitkeep"
+    if not placeholder.exists():
+        placeholder.write_bytes(b"")
+    print(f"==> 已补齐 go:embed 占位目录 {EMBED_DIR}（开发模式无需前端静态资源）")
+
 
 def port_in_use(port: int) -> bool:
     """端口是否已被占用。"""
@@ -57,6 +73,9 @@ def main() -> None:
             sys.exit(web.returncode)
         except KeyboardInterrupt:
             sys.exit(0)
+
+    # 确保 go:embed 目录存在（缺失时 go run 编译失败）
+    ensure_embed_dir()
 
     # 启动后端
     print(f"==> 启动后端（go run ./cmd/filespace -p {BACKEND_PORT}）...")
