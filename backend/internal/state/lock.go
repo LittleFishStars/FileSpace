@@ -37,7 +37,7 @@ func AcquireRunningLock(port int) (*RunningLock, int, error) {
 	path := filepath.Join(dir, lockFile)
 	// 锁文件存在：读取内容端口，探测是否存活
 	if _, err := os.Stat(path); err == nil {
-		if p := readLockPort(path); p > 0 && backendAlive(p) {
+		if p := readLockPort(path); p > 0 && BackendAlive(p) {
 			return nil, p, nil
 		}
 		// 崩溃残留（端口无响应或内容无效）：删除后重建
@@ -62,6 +62,25 @@ func (l *RunningLock) Release() error {
 		return nil
 	}
 	return os.Remove(l.path)
+}
+
+// ReadLockPort 读取锁文件记录的端口（容忍写入窗口）；文件缺失或内容无效时 ok=false。
+// 供前端程序 filespace-web 启动时定位后端。
+func ReadLockPort() (int, bool) {
+	p, err := path(lockFile)
+	if err != nil {
+		return 0, false
+	}
+	if _, err := os.Stat(p); err != nil {
+		return 0, false
+	}
+	port := readLockPort(p)
+	return port, port > 0
+}
+
+// BackendAlive 探测端口上是否运行着活的 filespace 后端。
+func BackendAlive(port int) bool {
+	return backendAlive(port)
 }
 
 // readLockPort 读取锁文件中的端口；容忍创建后写入的短暂窗口（重试），读不到返回 0。

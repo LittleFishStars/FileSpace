@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -24,7 +23,6 @@ import (
 // app 一次运行的组件集合。
 type app struct {
 	cfg     *config.Config
-	webRoot string
 	nodeID  string
 	mon     *monitor.Monitor
 	folders *share.Manager
@@ -33,9 +31,10 @@ type app struct {
 	cancel  context.CancelFunc
 }
 
-// runServer 启动 HTTP 服务与 mDNS 发现，等待退出信号后优雅关闭。
+// runServer 启动 HTTP API 服务与 mDNS 发现，等待退出信号后优雅关闭。
+// 界面（前端静态资源）由前端程序 filespace-web 托管，本进程只提供 API。
 func runServer(cfg *config.Config) {
-	a := &app{cfg: cfg, webRoot: webRoot()}
+	a := &app{cfg: cfg}
 	a.build()
 	a.startHTTP()
 	a.startDiscovery()
@@ -55,7 +54,6 @@ func (a *app) build() {
 		Folders: a.folders,
 		Monitor: a.mon,
 		Peers:   a.peers,
-		WebRoot: a.webRoot,
 	})
 	a.httpSrv = &http.Server{Addr: fmt.Sprintf(":%d", a.cfg.ListenPort), Handler: srv.Handler()}
 }
@@ -72,7 +70,7 @@ func (a *app) startHTTP() {
 
 // printStartup 打印服务地址与共享目录列表。
 func (a *app) printStartup() {
-	fmt.Printf("🌐 服务已启动: http://%s:%d（前端目录 %s）\n", a.mon.IP(), a.cfg.ListenPort, a.webRoot)
+	fmt.Printf("🌐 后端 API 已启动: http://%s:%d（界面请运行 filespace-web）\n", a.mon.IP(), a.cfg.ListenPort)
 	fmt.Printf("📂 共享 %d 个目录:\n", len(a.cfg.Shared))
 	for _, f := range a.cfg.Shared {
 		fmt.Printf("   - %s（%s）\n", f.Path, f.Name)
@@ -115,25 +113,4 @@ func saveLastShared(folders *share.Manager) {
 		return
 	}
 	fmt.Printf("已记录本次共享的目录: %s\n", strings.Join(paths, ", "))
-}
-
-// webRoot 定位前端静态资源，优先级：
-//  1. 二进制同级目录下的 web/（随包分发 / AppImage 布局）
-//  2. 当前工作目录下的 web/（开发模式）
-//  3. 系统安装布局 /usr/share/filespace/web（deb / pacman 包）
-func webRoot() string {
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		if fi, err := os.Stat(filepath.Join(dir, "web")); err == nil && fi.IsDir() {
-			return filepath.Join(dir, "web")
-		}
-	}
-	if fi, err := os.Stat("./web"); err == nil && fi.IsDir() {
-		return "./web"
-	}
-	const sysWeb = "/usr/share/filespace/web"
-	if fi, err := os.Stat(sysWeb); err == nil && fi.IsDir() {
-		return sysWeb
-	}
-	return "./web"
 }

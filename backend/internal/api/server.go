@@ -4,8 +4,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"filespace/internal/config"
 	"filespace/internal/discovery"
@@ -21,10 +19,9 @@ type Options struct {
 	Folders *share.Manager
 	Monitor *monitor.Monitor
 	Peers   *discovery.Cache
-	WebRoot string
 }
 
-// Server HTTP API 服务。
+// Server HTTP API 服务（纯 API，界面由前端程序 filespace-web 托管）。
 type Server struct {
 	cfg     *config.Config
 	nodeID  string
@@ -32,7 +29,6 @@ type Server struct {
 	folders *share.Manager
 	monitor *monitor.Monitor
 	peers   *discovery.Cache
-	webRoot string
 }
 
 // NewServer 创建 API 服务。
@@ -44,11 +40,10 @@ func NewServer(opts Options) *Server {
 		folders: opts.Folders,
 		monitor: opts.Monitor,
 		peers:   opts.Peers,
-		webRoot: opts.WebRoot,
 	}
 }
 
-// Handler 返回根路由（含 CORS 与静态资源托管）。
+// Handler 返回根路由（含 CORS，供浏览器跨节点直连下载）。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/node", s.handleNode)
@@ -57,7 +52,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/folders/{id}/tree", s.handleTree)
 	mux.HandleFunc("GET /api/folders/{id}/download", s.handleDownload)
 	mux.HandleFunc("GET /api/peers", s.handlePeers)
-	mux.HandleFunc("/", s.handleStatic)
 	return withCORS(mux)
 }
 
@@ -73,16 +67,6 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// handleStatic 托管前端静态资源，未命中的路径回退到 index.html（SPA）。
-func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
-	path := filepath.Join(s.webRoot, filepath.Clean("/"+r.URL.Path))
-	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
-		http.ServeFile(w, r, path)
-		return
-	}
-	http.ServeFile(w, r, filepath.Join(s.webRoot, "index.html"))
 }
 
 // writeJSON 输出 JSON 响应。

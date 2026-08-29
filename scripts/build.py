@@ -16,10 +16,16 @@
     python3 scripts/build.py pack linux        # Linux：deb + pacman + AppImage
 
 产物输出到 build/<平台>/（每个平台目录是一个完整可分发单元）：
-    build/linux/filespace         + build/linux/web/
-    build/windows/filespace.exe   + build/windows/web/
-    build/darwin/filespace        + build/darwin/web/
-    build/darwin-amd64/filespace  + build/darwin-amd64/web/
+    build/linux/filespace         + build/linux/filespace-web + build/linux/web/
+    build/windows/filespace.exe   + build/windows/filespace-web.exe + build/windows/web/
+    build/darwin/filespace        + build/darwin/filespace-web + build/darwin/web/
+    build/darwin-amd64/filespace  + build/darwin-amd64/filespace-web + build/darwin-amd64/web/
+
+两个独立程序：
+    filespace      后端：P2P + mDNS + 文件共享 API（纯 API，不托管界面）
+    filespace-web  前端：托管 web/ 界面；启动时读取后端锁文件获取端口，
+                   后端未启动时自动拉起一个后端，并把 /api 请求反向代理给它
+                   （运行入口：cd build/<平台>/ && ./filespace-web）
 
 安装包输出到 build/packages/<平台>/：
     build/packages/windows/FileSpace-<版本>.msi
@@ -120,8 +126,14 @@ def read_version():
 
 
 def binary_name(platform):
-    """目标平台的可执行文件名。"""
+    """目标平台的后端可执行文件名。"""
     return APP_BINARY + ".exe" if platform.goos == "windows" else APP_BINARY
+
+
+def web_binary_name(platform):
+    """目标平台的前端程序（filespace-web）可执行文件名。"""
+    name = APP_BINARY + "-web"
+    return name + ".exe" if platform.goos == "windows" else name
 
 
 # ============================================================
@@ -136,13 +148,12 @@ def build_web():
         sys.exit("错误：前端构建未产出 %s，请检查 web/ 构建配置" % WEB_OUT)
 
 
-def build_backend(platform, out_dir):
-    """交叉编译后端二进制到 out_dir。
+def go_build(platform, out_dir, binary, pkg):
+    """按平台交叉编译指定 Go 包到 out_dir。
 
     编译/模块缓存放到项目内 build/.gocache 与 build/.gomod：
     避免依赖用户全局缓存（如只读环境），也加速重复构建。
     """
-    binary = os.path.join(out_dir, binary_name(platform))
     env = dict(os.environ)
     env["GOOS"] = platform.goos
     env["GOARCH"] = platform.goarch
@@ -150,11 +161,21 @@ def build_backend(platform, out_dir):
     env["GOMODCACHE"] = os.path.join(BUILD_DIR, ".gomod")
     os.makedirs(env["GOCACHE"], exist_ok=True)
     os.makedirs(env["GOMODCACHE"], exist_ok=True)
-    run(["go", "build", "-o", binary, "./cmd/filespace"], cwd=BACKEND_DIR, env=env)
+    run(["go", "build", "-o", binary, pkg], cwd=BACKEND_DIR, env=env)
+
+
+def build_backend(platform, out_dir):
+    """交叉编译后端程序（filespace：纯 API，P2P + mDNS）。"""
+    go_build(platform, out_dir, os.path.join(out_dir, binary_name(platform)), "./cmd/filespace")
+
+
+def build_frontend(platform, out_dir):
+    """交叉编译前端程序（filespace-web：界面托管 + 后端自动拉起 + /api 反代）。"""
+    go_build(platform, out_dir, os.path.join(out_dir, web_binary_name(platform)), "./cmd/filespace-web")
 
 
 def build_one(platform):
-    """构建单个平台（假设前端 WEB_OUT 已存在）：拷贝 web + 交叉编译后端。"""
+    """构建单个平台（假设前端 WEB_OUT 已存在）：拷贝 web + 交叉编译前后端程序。"""
     plat_dir = os.path.join(BUILD_DIR, platform.name)
     os.makedirs(plat_dir, exist_ok=True)
 
@@ -164,6 +185,7 @@ def build_one(platform):
     shutil.copytree(WEB_OUT, web_target)
 
     build_backend(platform, plat_dir)
+    build_frontend(platform, plat_dir)
 
 
 def build_platforms(targets):
@@ -178,15 +200,16 @@ def build_platforms(targets):
     print("\n✅ 构建完成，产物目录：")
     for name in targets:
         p = PLATFORMS[name]
-        print("   build/%s/  （运行：cd build/%s && ./%s）" % (name, name, binary_name(p)))
+        print("   build/%s/  （运行：cd build/%s && ./%s）" % (name, name, web_binary_name(p)))
 
 
 def ensure_build(platform):
     """确保某平台构建产物存在（存在则复用，缺失则先构建）。"""
     plat_dir = os.path.join(BUILD_DIR, platform.name)
     binary = os.path.join(plat_dir, binary_name(platform))
+    web_binary = os.path.join(plat_dir, web_binary_name(platform))
     web_dir = os.path.join(plat_dir, "web")
-    if os.path.isfile(binary) and os.path.isdir(web_dir):
+    if os.path.isfile(binary) and os.path.isfile(web_binary) and os.path.isdir(web_dir):
         print("   复用已有构建产物：build/%s/" % platform.name)
         return
     print("   构建产物缺失，先构建 %s ..." % platform.name)
@@ -353,9 +376,13 @@ def _msi_installer(platform, version, msi_out):
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="FileSpace">
-%(web_tree)s
+%(
+web_tree)s
           <Component Id="cmpEXE" Guid="*">
             <File Id="filEXE" KeyPath="yes" Source="$(var.SourceDir)/filespace.exe"/>
+          </Component>
+          <Component Id="cmpWEBEXE" Guid="*">
+            <File Id="filWEBEXE" KeyPath="yes" Source="$(var.SourceDir)/filespace-web.exe"/>
           </Component>
         </Directory>
       </Directory>
@@ -363,6 +390,7 @@ def _msi_installer(platform, version, msi_out):
     <Feature Id="Main" Title="%(name)s" Level="1">
 %(refs)s
       <ComponentRef Id="cmpEXE"/>
+      <ComponentRef Id="cmpWEBEXE"/>
     </Feature>
   </Product>
 </Wix>
@@ -415,11 +443,13 @@ def _deb_package(platform, version, deb_out, icon):
 
     source_plat_dir = os.path.join(BUILD_DIR, platform.name)
 
-    # 二进制（strip 副本）
+    # 二进制（strip 副本）：后端 + 前端程序
     usr_bin = os.path.join(staging, "usr", "bin")
     os.makedirs(usr_bin, exist_ok=True)
     strip_copy(os.path.join(source_plat_dir, "filespace"),
                os.path.join(usr_bin, "filespace"))
+    strip_copy(os.path.join(source_plat_dir, "filespace-web"),
+               os.path.join(usr_bin, "filespace-web"))
 
     # web / 桌面入口 / 图标
     install_linux_files(os.path.join(staging, "usr", "share"), source_plat_dir, icon)
@@ -461,6 +491,8 @@ def _pacman_package(platform, version, out_dir, icon):
     os.makedirs(tar_root, exist_ok=True)
     strip_copy(os.path.join(source_plat_dir, "filespace"),
                os.path.join(tar_root, "filespace"))
+    strip_copy(os.path.join(source_plat_dir, "filespace-web"),
+               os.path.join(tar_root, "filespace-web"))
     web_target = os.path.join(tar_root, "web")
     shutil.copytree(os.path.join(source_plat_dir, "web"), web_target)
     write_desktop(os.path.join(tar_root, "filespace.desktop"))
@@ -485,6 +517,7 @@ sha256sums=('SKIP')
 package() {
   cd "${srcdir}"
   install -Dm755 filespace "${pkgdir}/usr/bin/filespace"
+  install -Dm755 filespace-web "${pkgdir}/usr/bin/filespace-web"
   install -dm755 "${pkgdir}/usr/share/filespace"
   cp -r web "${pkgdir}/usr/share/filespace/"
   install -Dm644 filespace.desktop "${pkgdir}/usr/share/applications/filespace.desktop"
@@ -518,17 +551,20 @@ def _appimage(platform, version, appimage_out, icon):
 
     source_plat_dir = os.path.join(BUILD_DIR, platform.name)
 
-    # AppRun：不改变用户工作目录（filespace 共享的是调用方 cwd）
+    # AppRun：不改变用户工作目录（共享的是调用方 cwd），启动前端程序
+    # filespace-web（它会自动拉起同目录下的 filespace 后端）
     apprun = os.path.join(appdir, "AppRun")
     with open(apprun, "w", encoding="utf-8") as f:
         f.write("#!/bin/sh\n"
                 "# 文件空间 AppImage 启动脚本：资源在 AppDir 内，保持用户当前工作目录\n"
                 'SELF="$(readlink -f "$0")"\n'
-                'exec "$(dirname "$SELF")/filespace" "$@"\n')
+                'exec "$(dirname "$SELF")/filespace-web" "$@"\n')
     os.chmod(apprun, 0o755)
 
     strip_copy(os.path.join(source_plat_dir, "filespace"),
                os.path.join(appdir, "filespace"))
+    strip_copy(os.path.join(source_plat_dir, "filespace-web"),
+               os.path.join(appdir, "filespace-web"))
     shutil.copytree(os.path.join(source_plat_dir, "web"),
                     os.path.join(appdir, "web"))
     write_desktop(os.path.join(appdir, "filespace.desktop"))

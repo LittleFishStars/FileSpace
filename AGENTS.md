@@ -1,19 +1,21 @@
 # 文件空间 FileSpace — Agent 指南
 
-局域网文件共享工具：在任意文件夹执行 `filespace` 即可共享该文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
+局域网文件共享工具：在任意文件夹执行 `filespace-web` 即可共享该文件夹（自动拉起后端），打开浏览器即可查看局域网内所有已共享的文件夹。
+
+前后端是两个独立程序：**filespace**（后端，纯 API）+ **filespace-web**（前端程序，运行入口）。
 
 ## 项目结构
 
 - `web/`     — 前端（Next.js 16 App Router + antd + Tailwind v4）
-- `backend/` — 后端（Go，P2P + mDNS）
-- `scripts/` — 构建脚本（`build.py`，Python）
-- `build/`   — 构建产物（gitignored），`build/<平台>/` 下为二进制 + web/ 静态资源
+- `backend/` — 后端（Go，P2P + mDNS）：`cmd/filespace`（API）+ `cmd/filespace-web`（前端程序）
+- `scripts/` — 构建脚本（`build.py`）与开发启动脚本（`dev.py`），Python
+- `build/`   — 构建产物（gitignored），`build/<平台>/` 下为 filespace + filespace-web + web/
 
 ## 常用命令
 
 ```bash
-make dev                    # 同时启动前端 :3000 + 后端 :8080
-make dev-web / dev-backend  # 单独启动
+make dev                    # 前端 :3000（scripts/dev.py 读锁文件自动拉起/复用后端）
+make dev-web / dev-backend  # 单独启动（dev-web 同 dev）
 make build                  # 全部平台构建（等价 python3 scripts/build.py）
 make build-linux / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
 python3 scripts/build.py windows darwin   # 脚本直接调用，可多平台
@@ -33,7 +35,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 ## 前端约定
 
 - Next.js 16 + `output: 'export'`（静态导出）：**动态路由段无法预渲染**，用查询参数（如 `/folders?folderId=xxx`）
-- 开发环境 `/api/*` 由 `next.config.ts` 的 rewrites 代理到后端 :8080（仅 dev 生效，勿与 output:export 同时启用）
+- 开发环境 `/api/*` 由 `next.config.ts` 的 rewrites 代理到后端（默认 :8080，可用环境变量 `FILESPACE_BACKEND` 覆盖，`scripts/dev.py` 按后端实际端口设置；仅 dev 生效，勿与 output:export 同时启用）
 - 卡片组件在 `web/app/_cards/`，页面在 `web/app/`，API 封装在 `web/app/_lib/api.ts`
 - 预览渲染路由用 `@smazeeapps/file-viewer` 的 `detectFileType`（勿硬编码扩展名）；不支持的非二进制格式以纯文本显示
 - **勿移除** `file_preview.tsx` 顶部的 `window.Prism = {manual: true}`（阻止 prism 自动 highlightAll 破坏代码逐行结构）
@@ -45,7 +47,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定：`backend/version.go` 当前为 `0.1.0`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
+- 版本号约定：`backend/version.go` 当前为 `0.1.12`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->
