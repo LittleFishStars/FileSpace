@@ -54,6 +54,7 @@ func usage() {
 参数:
   [目录...]               要共享的文件夹（可多个）；缺省恢复上次退出前共享的目录，无记录时共享当前目录
   -a, --add               额外共享当前文件夹（在解析出的共享目录之外追加）
+  --this                  仅共享当前目录（不恢复上次共享的目录）
   -c, --config <文件>     配置文件路径（YAML）
   -p, --port <端口>       监听端口（默认 8080）
   -h, --help              显示本帮助信息
@@ -64,11 +65,12 @@ func usage() {
 示例:
   filespace                        恢复上次共享的目录（无记录时共享当前目录）
   filespace -a                     恢复上次共享的目录，并额外共享当前目录
+  filespace --this                 仅共享当前目录
   filespace ~/docs /mnt/data       共享多个目录
   filespace -p 9000 ~/docs         指定端口
   filespace -c config.yaml         使用配置文件
 
-配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可在任何情况下额外共享当前目录。
+配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可在任何情况下额外共享当前目录，--this 可仅共享当前目录。
 `)
 }
 
@@ -85,8 +87,10 @@ func main() {
 	flag.BoolVar(&showHelp, "help", false, "显示帮助信息")
 	flag.BoolVar(&showHelp, "h", false, "显示帮助信息（-h, --help 简写）")
 	var addCwd bool
-	flag.BoolVar(&addCwd, "add", false, "直接共享当前文件夹")
-	flag.BoolVar(&addCwd, "a", false, "直接共享当前文件夹（-a, --add 简写）")
+	flag.BoolVar(&addCwd, "add", false, "额外共享当前文件夹")
+	flag.BoolVar(&addCwd, "a", false, "额外共享当前文件夹（-a, --add 简写）")
+	var thisOnly bool
+	flag.BoolVar(&thisOnly, "this", false, "仅共享当前目录")
 	flag.Parse()
 	args := flag.Args()
 
@@ -108,7 +112,19 @@ func main() {
 	if port != 0 {
 		cfg.ListenPort = port
 	}
-	// 共享目录解析：目录参数 > 配置文件 shared_folders > 上次共享记录 > 当前目录
+	// 共享目录解析：目录参数 > 配置文件 shared_folders > 上次共享记录 > 当前目录；
+	// --this 仅共享当前目录（跳过恢复），与目录参数 / 配置中的 shared_folders 互斥
+	if thisOnly {
+		if len(args) > 0 {
+			log.Fatalf("不能同时使用 --this 与目录参数")
+		}
+		if len(cfg.Shared) > 0 {
+			log.Fatalf("不能同时使用 --this 与配置文件中的 shared_folders")
+		}
+		cwd, _ := os.Getwd()
+		cfg.Shared = []filespace.SharedFolder{{Path: cwd, Name: filepath.Base(cwd)}}
+		fmt.Printf("已指定 --this，仅共享当前目录: %s\n", cwd)
+	}
 	if len(args) > 0 {
 		cfg.Shared = make([]filespace.SharedFolder, 0, len(args))
 		for _, p := range args {

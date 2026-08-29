@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 🖥️ 零配置共享：`cd 某文件夹 && filespace` 一键共享当前目录；未指定目录时自动恢复上次退出前共享的目录（`filespace -a` 可在恢复之外额外共享当前目录），也可指定共享目录/文件
+- 🖥️ 零配置共享：`cd 某文件夹 && filespace` 一键共享当前目录；未指定目录时自动恢复上次退出前共享的目录（`filespace -a` 可在恢复之外额外共享当前目录，`filespace --this` 仅共享当前目录），也可指定共享目录/文件
 - 📡 mDNS 自动发现：局域网内节点自动互相发现，无需手动配置地址
 - 🌐 Web 界面：浏览器查看所有节点及其共享文件夹，支持文件浏览与下载
 - 🖧 P2P 架构：无中心服务器，节点对等，断网可用
@@ -112,7 +112,7 @@ make dev-backend   # 后端（:8080）
 
 配置见 `backend/config.yaml`：监听端口、共享目录列表、mDNS 服务名、状态采集间隔等。
 
-未指定共享目录（命令行与配置文件均未设置）时，后端会恢复**上次退出前共享的目录**；每次正常退出（Ctrl+C / kill / 终端关闭）前会把当前共享目录记录到用户配置目录下的 `filespace/last-shared.yaml`（Linux `~/.config/filespace/`、macOS `~/Library/Application Support/filespace/`、Windows `%AppData%\filespace\`）。删除该文件即可回到「默认共享当前目录」的行为；`filespace -a` 可在解析出的共享目录之外**额外**共享当前目录（已在列表中则跳过），可与目录参数、配置文件同时使用。
+未指定共享目录（命令行与配置文件均未设置）时，后端会恢复**上次退出前共享的目录**；每次正常退出（Ctrl+C / kill / 终端关闭）前会把当前共享目录记录到用户配置目录下的 `filespace/last-shared.yaml`（Linux `~/.config/filespace/`、macOS `~/Library/Application Support/filespace/`、Windows `%AppData%\filespace\`）。删除该文件即可回到「默认共享当前目录」的行为；`filespace -a` 可在解析出的共享目录之外**额外**共享当前目录（已在列表中则跳过），可与目录参数、配置文件同时使用；`filespace --this` 则**仅**共享当前目录（不恢复上次记录，与目录参数、配置文件中的 shared_folders 互斥）。
 
 ## API 一览
 
