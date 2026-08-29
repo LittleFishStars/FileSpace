@@ -1,10 +1,12 @@
 'use client'
 
 import React, {useEffect, useState} from 'react';
-import {Alert, Empty, Spin} from 'antd';
+import {Alert, Button, Empty, Spin} from 'antd';
+import {FolderAddOutlined} from '@ant-design/icons';
+import Link from 'next/link';
 import AppShell from './app_shell';
 import HostCard, {type HostInfo} from '../_cards/host_card';
-import {fetchNode, fetchPeers, fetchFolders, type ApiFolderInfo, type ApiNodeInfo} from '../_lib/api';
+import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo} from '../_lib/api';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
 function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
@@ -26,7 +28,10 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
     };
 }
 
-/** 主机列表页：本节点 + mDNS 发现的其他节点（含各自共享文件夹） */
+/**
+ * 主机列表页：仅展示 mDNS 发现的其他节点（本机节点不在此列出，
+ * 本机共享文件夹在独立的「本机管理」页（/local）中管理）。
+ */
 export default function HostShell() {
     const [hosts, setHosts] = useState<HostInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -35,13 +40,12 @@ export default function HostShell() {
         let cancelled = false;
         async function load() {
             try {
-                const [node, folders, peers] = await Promise.all([
+                const [node, peers] = await Promise.all([
                     fetchNode(),
-                    fetchFolders(),
                     fetchPeers(),
                 ]);
                 if (cancelled) return;
-                const list: HostInfo[] = [toHostInfo(node, folders)];
+                const list: HostInfo[] = [];
                 for (const peer of peers) {
                     if (peer.node && peer.node.id !== node.id) {
                         list.push(toHostInfo(peer.node, peer.folders));
@@ -70,7 +74,7 @@ export default function HostShell() {
             </div>
         );
     } else if (hosts.length === 0) {
-        content = <Empty description="暂无节点"/>;
+        content = <Empty description="暂无其他节点"/>;
     } else {
         content = (
             <div className="flex flex-col gap-4">
@@ -81,5 +85,21 @@ export default function HostShell() {
         );
     }
 
-    return <AppShell title="主机列表">{content}</AppShell>;
+    return (
+        <AppShell title="主机列表">
+            {/* 本机管理入口：本机节点不占用主机列表卡片，单独进入管理页 */}
+            <Link href="/local" className="mb-4 block">
+                <Button
+                    type="primary"
+                    block
+                    size="large"
+                    icon={<FolderAddOutlined/>}
+                    className="!h-14 !text-base"
+                >
+                    本机文件夹管理（添加 / 删除共享文件夹）
+                </Button>
+            </Link>
+            {content}
+        </AppShell>
+    );
 }

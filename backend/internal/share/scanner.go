@@ -95,6 +95,19 @@ func realPath(path string) string {
 	return path
 }
 
+// Remove 按 ID 移除共享目录；不存在返回 ErrFolderNotFound。
+func (m *Manager) Remove(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.folders {
+		if m.folders[i].ID == id {
+			m.folders = append(m.folders[:i], m.folders[i+1:]...)
+			return nil
+		}
+	}
+	return ErrFolderNotFound
+}
+
 // List 返回共享文件夹列表（含实时统计的文件数 / 总大小 / 最近更新）。
 func (m *Manager) List() []model.FolderInfo {
 	m.mu.RLock()

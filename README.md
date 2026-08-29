@@ -12,7 +12,7 @@
 
 - **🖥️ 零配置共享**：`cd 某文件夹 && filespace --web` 一键共享当前目录，自动在浏览器中打开界面；未指定目录时自动恢复上次退出前共享的目录
 - **📡 mDNS 自动发现**：局域网内节点自动互相发现，无需手动配置地址
-- **🌐 Web 界面**：浏览器查看所有节点及其共享文件夹，支持文件浏览、下载与在线预览（PDF / Office / 代码 / 图片 / 文本，二进制回退下载）
+- **🌐 Web 界面**：浏览器查看局域网内其他节点及其共享文件夹，支持文件浏览、下载与在线预览（PDF / Office / 代码 / 图片 / 文本，二进制回退下载）；本机共享文件夹在独立的「本机管理」页中添加 / 删除，本机文件用系统默认应用直接打开
 - **🖧 P2P 架构**：无中心服务器，节点对等，断网可用
 - **🌗 深浅主题**：跟随系统配色，可手动切换（跟随系统 / 浅色 / 深色）
 
@@ -153,6 +153,8 @@ python3 scripts/build.py pack linux
 | `GET /api/node` | 本节点信息 |
 | `GET /api/folders` | 本节点共享的文件夹列表 |
 | `POST /api/folders/add` | 追加共享目录（仅供本机回环地址调用，同机另一 filespace 进程移交目录用） |
+| `POST /api/folders/remove` | 移除共享目录（仅供本机回环地址调用，本机管理页用） |
 | `GET /api/folders/{id}/tree` | 文件树（懒加载） |
 | `GET /api/folders/{id}/download` | 文件下载（支持 Range 断点续传） |
+| `POST /api/folders/{id}/open` | 用系统默认应用打开本机文件（仅供本机回环地址调用，xdg-open / open / cmd start） |
 | `GET /api/peers` | mDNS 发现的其他节点（含其共享文件夹） |

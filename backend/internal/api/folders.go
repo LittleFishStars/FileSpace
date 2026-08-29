@@ -52,6 +52,33 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"added": added})
 }
 
+// removeFolderRequest 移除共享目录的请求体。
+type removeFolderRequest struct {
+	ID string `json:"id"`
+}
+
+// handleRemoveFolder 移除共享目录（仅允许本机调用，与添加共享目录同等安全约束）。
+func (s *Server) handleRemoveFolder(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "仅允许本机调用")
+		return
+	}
+	var req removeFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+		return
+	}
+	if req.ID == "" {
+		writeError(w, http.StatusBadRequest, "id 不能为空")
+		return
+	}
+	if err := s.folders.Remove(req.ID); err != nil {
+		writeFolderError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"removed": req.ID})
+}
+
 // isLoopbackRequest 判断请求是否来自本机（回环地址 127.0.0.1 / ::1）。
 func isLoopbackRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
