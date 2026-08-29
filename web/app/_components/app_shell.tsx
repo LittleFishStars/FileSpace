@@ -4,6 +4,7 @@ import React, {useSyncExternalStore} from 'react';
 import {Breadcrumb, Segmented} from 'antd';
 import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
 import Link from 'next/link';
+import {useRouter} from 'next/navigation';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
 import {useTheme, type ThemeMode} from './app_theme';
 
@@ -88,6 +89,7 @@ export default function AppShell({
 }) {
     const mounted = useSyncExternalStore(subscribeNoop, getClientSnapshot, getServerSnapshot);
     const {mode, setMode} = useTheme();
+    const router = useRouter();
 
     // 挂载前渲染占位，避免服务端渲染 ProLayout。
     if (!mounted) {
@@ -109,23 +111,25 @@ export default function AppShell({
               }
             : {title};
 
-    // 顶栏左侧：有 topTabs 时把 logo + 标题文字 + 选项卡组合为一个节点
-    // （ProLayout 的 title 仅接受字符串，故用 logo 承载组合内容并关闭默认标题）；
-    // 无 topTabs 时保持默认（logo 图标 + 标题文字）。
-    const titleNode = topTabs ? false : '文件空间';
-    const logoNode = topTabs ? (
-        <span className="flex items-center gap-3">
+    // 顶栏左侧：logo + 标题文字（+ 可选选项卡）组合为一个节点，
+    // 点击返回主页（ProLayout 的 title 仅接受字符串，故用 logo 承载组合内容并关闭默认标题）。
+    // 选项卡点击需阻止冒泡，避免触发返回主页的跳转。
+    const titleNode = false;
+    const logoNode = (
+        <span className="flex cursor-pointer items-center gap-3" onClick={() => router.push('/')}>
             <BrandMark/>
             <span className="text-base font-semibold text-neutral-900 dark:text-neutral-100">文件空间</span>
-            <Segmented
-                size="middle"
-                value={topTabs.activeKey}
-                onChange={(value) => topTabs.onChange(value as string)}
-                options={topTabs.items.map((item) => ({label: item.label, value: item.key}))}
-            />
+            {topTabs && (
+                <span onClick={(e) => e.stopPropagation()}>
+                    <Segmented
+                        size="middle"
+                        value={topTabs.activeKey}
+                        onChange={(value) => topTabs.onChange(value as string)}
+                        options={topTabs.items.map((item) => ({label: item.label, value: item.key}))}
+                    />
+                </span>
+            )}
         </span>
-    ) : (
-        <BrandMark/>
     );
 
     return (
