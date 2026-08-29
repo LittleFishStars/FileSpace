@@ -55,11 +55,10 @@ const THEME_OPTIONS = [
     {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
 ];
 
-/** 顶部导航菜单：主界面（/）、局域网节点（/nodes）与本机节点（/local），所有页面顶栏可见、可随时切换 */
+/** 顶部导航菜单：局域网节点（/nodes）与本机节点（/local），所有页面顶栏可见、可随时切换 */
 const TOP_MENU = {
     path: '/',
     routes: [
-        {path: '/', name: '主界面'},
         {path: '/nodes', name: '局域网节点'},
         {path: '/local', name: '本机节点'},
     ],
@@ -67,8 +66,8 @@ const TOP_MENU = {
 
 /**
  * 应用外壳：ProLayout 顶部导航模式。
- * 顶栏左侧为 logo + 标题（点击返回主界面），右侧为顶部导航菜单
- * （主界面 / 局域网节点 / 本机节点，高亮当前路由）+ 主题切换按钮。
+ * 顶栏左侧为 logo + 标题（点击返回主页），右侧为顶部导航菜单
+ * （局域网节点 / 本机节点，高亮当前路由）+ 主题切换按钮。
  * 标题可为纯文本（title），也可为面包屑形式（breadcrumb，
  * 形如「局域网节点 > 主机名 > 文件夹」，此时 title 作为加载中的回退标题）。
  */
