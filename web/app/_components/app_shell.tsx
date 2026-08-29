@@ -30,6 +30,12 @@ export interface BreadcrumbItem {
     href?: string;
 }
 
+/** 顶栏选项卡：渲染在标题与主题切换按钮所在的那一行 */
+export interface TopTabItem {
+    key: string;
+    label: React.ReactNode;
+}
+
 /** 品牌标志：互联网络标识，用 currentColor 随主题（浅/深）自适应 */
 function BrandMark() {
     return (
@@ -63,6 +69,7 @@ export default function AppShell({
     title,
     breadcrumb,
     wide = false,
+    topTabs,
     children,
 }: {
     /** 页面标题（未提供 breadcrumb 或 breadcrumb 为空时的回退标题） */
@@ -71,6 +78,12 @@ export default function AppShell({
     breadcrumb?: BreadcrumbItem[];
     /** 内容区是否放宽（文件浏览等表格页用），默认窄栏 */
     wide?: boolean;
+    /** 顶栏选项卡（可选）：渲染在标题 / 主题切换按钮那一行，切换由页面自身控制 */
+    topTabs?: {
+        items: TopTabItem[];
+        activeKey: string;
+        onChange: (key: string) => void;
+    };
     children: React.ReactNode;
 }) {
     const mounted = useSyncExternalStore(subscribeNoop, getClientSnapshot, getServerSnapshot);
@@ -102,6 +115,17 @@ export default function AppShell({
             logo={<BrandMark/>}
             layout={'top'}
             actionsRender={() => [
+                // 顶栏选项卡（可选）：在主题切换左侧
+                topTabs && (
+                    <Segmented
+                        key="top-tabs"
+                        size="middle"
+                        style={{marginRight: 16}}
+                        value={topTabs.activeKey}
+                        onChange={(value) => topTabs.onChange(value as string)}
+                        options={topTabs.items.map((item) => ({label: item.label, value: item.key}))}
+                    />
+                ),
                 <Segmented
                     key="theme-toggle"
                     size="middle"

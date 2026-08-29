@@ -1,7 +1,7 @@
 'use client'
 
 import React, {useEffect, useState} from 'react';
-import {Alert, Empty, Spin, Tabs} from 'antd';
+import {Alert, Empty, Spin} from 'antd';
 import AppShell from './app_shell';
 import HostCard, {type HostInfo} from '../_cards/host_card';
 import LocalPanel from './local_panel';
@@ -28,11 +28,13 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
 }
 
 /**
- * 主页：顶栏两个选项卡。
+ * 主页：顶栏两个选项卡（标题与主题切换按钮所在的那一行）。
  * - 局域网节点：mDNS 发现的其他节点（本机节点不在此列出）
  * - 本机节点：本机节点信息 + 共享文件夹管理（添加 / 删除），与 /local 页内容一致
  */
 export default function HostShell() {
+    // 当前选项卡：lan=局域网节点（默认），local=本机节点
+    const [tab, setTab] = useState<'lan' | 'local'>('lan');
     const [hosts, setHosts] = useState<HostInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -87,14 +89,19 @@ export default function HostShell() {
     }
 
     return (
-        <AppShell wide title="主机列表">
-            <Tabs
-                defaultActiveKey="lan"
-                items={[
-                    {key: 'lan', label: '局域网节点', children: lanContent},
-                    {key: 'local', label: '本机节点', children: <LocalPanel/>},
-                ]}
-            />
+        <AppShell
+            wide
+            title="主机列表"
+            topTabs={{
+                items: [
+                    {key: 'lan', label: '局域网节点'},
+                    {key: 'local', label: '本机节点'},
+                ],
+                activeKey: tab,
+                onChange: (key) => setTab(key as 'lan' | 'local'),
+            }}
+        >
+            {tab === 'lan' ? lanContent : <LocalPanel/>}
         </AppShell>
     );
 }
