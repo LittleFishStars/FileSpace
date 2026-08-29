@@ -164,7 +164,7 @@ export default function DashboardPanel() {
                 </div>
 
                 {/* 快捷入口（无边框） */}
-                <div className="flex flex-col items-center gap-3 pt-2 sm:flex-row sm:justify-center">
+                <div className="flex flex-col items-center gap-3 pt-8 sm:flex-row sm:justify-center">
                     <Link href="/nodes">
                         <Button type="primary" size="large" icon={<CloudServerOutlined/>}>
                             浏览局域网节点
@@ -180,9 +180,9 @@ export default function DashboardPanel() {
         );
     }
 
-    // 全屏居中布局：垂直 + 水平居中，四周留白；内容限宽，避免统计卡片过宽
+    // 全屏布局：内容偏上（非居中），四周留白；内容限宽，避免统计卡片过宽
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center p-6 sm:p-10">
+        <div className="flex min-h-screen flex-col items-center justify-start p-6 sm:p-10 pt-16 sm:pt-20">
             <div className="w-full max-w-3xl">{content}</div>
         </div>
     );
