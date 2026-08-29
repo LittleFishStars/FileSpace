@@ -33,5 +33,5 @@ body {
 
 /* 顶部导航模式（TopNavHeader）下：标题（logo + 文字）与「局域网节点 / 本机节点」菜单之间留出更大间距 */
 .ant-pro-top-nav-header .ant-pro-top-nav-header-logo {
-  margin-inline-end: 64px;
+  margin-inline-end: 40px;
 }
