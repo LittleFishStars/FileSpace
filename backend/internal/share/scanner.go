@@ -31,6 +31,8 @@ type Folder struct {
 	ID   string
 	Name string
 	Path string
+	// RealPath 解析符号链接后的真实路径，仅用于内部去重（识别指向同一目录的重复添加）。
+	RealPath string
 }
 
 // Manager 管理本节点共享的目录（支持运行中追加）。
@@ -48,15 +50,18 @@ func NewManager(shared []filespace.SharedFolder) *Manager {
 			name = filepath.Base(sf.Path)
 		}
 		folders = append(folders, Folder{
-			ID:   folderID(sf.Path),
-			Name: name,
-			Path: sf.Path,
+			ID:       folderID(sf.Path),
+			Name:     name,
+			Path:     sf.Path,
+			RealPath: realPath(sf.Path),
 		})
 	}
 	return &Manager{folders: folders}
 }
 
-// Add 运行中追加一个共享目录：校验路径存在且为目录，已在列表中则返回 ErrFolderExists。
+// Add 运行中追加一个共享目录：校验路径存在且为目录。
+// 去重仅针对指向同一目录的重复（精确路径或符号链接解析后的真实路径相同），
+// 不阻止同时共享父目录与其子目录。
 func (m *Manager) Add(path string) (Folder, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -69,16 +74,25 @@ func (m *Manager) Add(path string) (Folder, error) {
 	if !fi.IsDir() {
 		return Folder{}, ErrNotDirectory
 	}
+	real := realPath(abs)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, f := range m.folders {
-		if f.Path == abs {
+		if f.Path == abs || (f.RealPath != "" && f.RealPath == real) {
 			return f, ErrFolderExists
 		}
 	}
-	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs}
+	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs, RealPath: real}
 	m.folders = append(m.folders, f)
 	return f, nil
+}
+
+// realPath 返回路径解析符号链接后的真实路径；解析失败时原样返回（去重退化为精确匹配）。
+func realPath(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	return path
 }
 
 // List 返回共享文件夹列表（含实时统计的文件数 / 总大小 / 最近更新）。

@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"net/netip"
 
 	"filespace/internal/model"
 	"filespace/internal/share"
@@ -20,7 +22,12 @@ type addFoldersRequest struct {
 }
 
 // handleAddFolders 追加共享目录（本机另一个 filespace 进程探测到本后端后，把目录交过来）。
+// 仅允许本机（回环地址）调用，防止局域网内其他机器随意向本机追加共享目录。
 func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "仅允许本机调用")
+		return
+	}
 	var req addFoldersRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
@@ -43,6 +50,19 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 		added = append(added, model.FolderInfo{ID: f.ID, Name: f.Name, Path: f.Path})
 	}
 	writeJSON(w, map[string]any{"added": added})
+}
+
+// isLoopbackRequest 判断请求是否来自本机（回环地址 127.0.0.1 / ::1）。
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
 // handleTree 懒加载返回共享目录内的文件列表（?path=相对路径）。
