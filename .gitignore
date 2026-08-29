@@ -17,6 +17,10 @@
 /backend/filespace
 /backend/bin/
 
+# python
+__pycache__/
+*.pyc
+
 # misc
 .DS_Store
 *.pem

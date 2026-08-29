@@ -30,7 +30,18 @@ export async function proxy(request: NextRequest) {
     init.body = request.body;
   }
 
-  const upstream = await fetch(target, init);
+  // 后端不可达（连接失败/假死挂起）时返回 503，由启动器（start.js）的
+  // 守护逻辑自动重启后端；5s 超时防止后端假死导致请求长期挂起。
+  let upstream: Response;
+  try {
+    init.signal = AbortSignal.timeout(5000);
+    upstream = await fetch(target, init);
+  } catch {
+    return NextResponse.json(
+      { error: "后端服务暂不可用，正在自动重启，请稍后刷新" },
+      { status: 503, headers: { "Retry-After": "3" } }
+    );
+  }
 
   // 透传后端响应（状态码 / 响应头，含 206 与 Content-Disposition 等）
   return new NextResponse(upstream.body, {
