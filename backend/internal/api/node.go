@@ -19,6 +19,8 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		Status:          "online",
 		Uptime:          s.monitor.Uptime(),
 		ListenAddr:      fmt.Sprintf("%s:%d", ip, s.cfg.ListenPort),
+		// 节点级标记：本节点是否存在需要访问密码的共享文件夹（具体看每个文件夹的 auth 字段）
+		Auth: s.folders.HasPassword(),
 	}
 	writeJSON(w, info)
 }

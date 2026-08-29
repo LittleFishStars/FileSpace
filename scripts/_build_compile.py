@@ -22,7 +22,12 @@ from _build_common import (
 def build_web():
     """构建前端静态导出（output: 'export' → web/out/）。"""
     print("\n[前端] 构建静态导出 ...")
-    run(["pnpm", "build"], cwd=WEB_DIR)
+    env = dict(os.environ)
+    # 版本号含超 int32 的时间戳补丁（如 0.3.0-2608292038），pnpm 11 的依赖状态检查
+    # （verify-deps-before-run，默认 install）会解析出错并误判依赖过期、自动触发 pnpm install，
+    # 在离线/只读环境下直接失败；这里关闭自动依赖检查（依赖变更时手动 pnpm install）。
+    env["pnpm_config_verify_deps_before_run"] = "false"
+    run(["pnpm", "build"], cwd=WEB_DIR, env=env)
     if not os.path.isdir(WEB_EXPORT):
         sys.exit("错误：前端构建未产出 %s，请检查 web/ 构建配置" % WEB_EXPORT)
 

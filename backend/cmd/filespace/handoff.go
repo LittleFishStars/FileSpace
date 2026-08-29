@@ -17,6 +17,9 @@ import (
 // handoffToExisting 已有后端在运行（运行锁被持有）：仅允许用目录参数或 -a 追加，
 // 把目录交给它后退出；无追加内容时报错退出。
 func handoffToExisting(port int, opts *options, args []string) {
+	if opts.passwd != "" {
+		log.Printf("警告: 已有后端在运行，-P/--passwd 仅在首次启动时生效，无法修改已运行后端的访问密码")
+	}
 	paths := appendPaths(args, opts.addCwd)
 	if len(paths) == 0 {
 		log.Fatalf("检测到已有 filespace 后端在运行（端口 %d），仅支持使用目录参数或 -a 追加共享目录（--this 等独占模式不适用）", port)

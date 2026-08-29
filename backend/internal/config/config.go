@@ -13,6 +13,9 @@ import (
 type SharedFolder struct {
 	Path string `yaml:"path" json:"path"`
 	Name string `yaml:"name" json:"name"`
+	// Passwd 该文件夹的访问密码：为空表示对局域网开放；
+	// 设置后其他节点需先通过 /api/auth 认证（换取访问令牌）才能查看/下载该文件夹的内容，本机回环访问不受影响。
+	Passwd string `yaml:"passwd" json:"passwd"`
 }
 
 // DiscoveryConfig mDNS 发现配置。
@@ -33,6 +36,10 @@ type Config struct {
 	Shared     []SharedFolder  `yaml:"shared_folders" json:"sharedFolders"`
 	Discovery  DiscoveryConfig `yaml:"discovery" json:"discovery"`
 	Monitor    MonitorConfig   `yaml:"monitor" json:"monitor"`
+	// Passwd 默认访问密码（-P/--passwd 或配置文件顶层 passwd）：
+	// 应用于本节点所有未显式设置密码（shared_folders[].passwd 为空）的共享文件夹。
+	// 为空表示默认不设密码（文件夹保持开放）。
+	Passwd string `yaml:"passwd" json:"passwd"`
 }
 
 // DefaultConfig 返回默认配置。

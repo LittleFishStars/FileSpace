@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { ProCard } from '@ant-design/pro-components'
-import { Badge } from 'antd'
+import { Badge, Tooltip } from 'antd'
 import {
   ApiOutlined,
   CloudServerOutlined,
   FolderOpenOutlined,
   LaptopOutlined,
+  LockOutlined,
 } from '@ant-design/icons'
 import FolderCard, { type FolderInfo } from './folder_card'
 import NodeInfoCard from './node_info_card'
@@ -27,6 +28,8 @@ export interface HostInfo {
   uptime: string
   /** 节点上运行的程序版本 */
   softwareVersion: string
+  /** 该节点是否设置了共享访问密码（访问其文件需输入密码） */
+  auth?: boolean
   folders: FolderInfo[]
 }
 
@@ -42,6 +45,11 @@ export default function HostCard({ host }: { host: HostInfo }) {
         <span className="flex items-center gap-2 text-base font-semibold">
           <CloudServerOutlined className="text-neutral-500 dark:text-neutral-400" />
           {host.hostname}
+          {host.auth && (
+            <Tooltip title="该节点有需要密码访问的共享文件夹">
+              <LockOutlined className="text-amber-500 dark:text-amber-400" />
+            </Tooltip>
+          )}
         </span>
       }
       extra={

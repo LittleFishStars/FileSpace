@@ -32,6 +32,7 @@ type Server struct {
 	folders *share.Manager
 	monitor *monitor.Monitor
 	peers   *discovery.Cache
+	auth    *authManager // 访问令牌管理（文件夹级密码认证）
 }
 
 // NewServer 创建 API 服务。
@@ -43,6 +44,7 @@ func NewServer(opts Options) *Server {
 		folders: opts.Folders,
 		monitor: opts.Monitor,
 		peers:   opts.Peers,
+		auth:    newAuthManager(),
 	}
 }
 
@@ -50,9 +52,11 @@ func NewServer(opts Options) *Server {
 func (s *Server) apiMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/node", s.handleNode)
+	mux.HandleFunc("POST /api/auth", s.handleAuth)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("POST /api/folders/add", s.handleAddFolders)
 	mux.HandleFunc("POST /api/folders/remove", s.handleRemoveFolder)
+	mux.HandleFunc("POST /api/local/pick-directory", s.handlePickDirectory)
 	mux.HandleFunc("GET /api/folders/{id}/tree", s.handleTree)
 	mux.HandleFunc("GET /api/folders/{id}/download", s.handleDownload)
 	mux.HandleFunc("POST /api/folders/{id}/open", s.handleOpenFile)
@@ -125,7 +129,7 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

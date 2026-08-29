@@ -11,6 +11,9 @@ type NodeInfo struct {
 	Status          string `json:"status"` // online / offline
 	Uptime          string `json:"uptime"`
 	ListenAddr      string `json:"listenAddr"`
+	// Auth 该节点是否设置了共享访问密码：远程节点需先通过 /api/auth 认证
+	// 才能查看/下载本节点共享的文件内容（本机回环访问不受影响）。
+	Auth bool `json:"auth"`
 }
 
 // FolderInfo 共享文件夹信息。
@@ -21,6 +24,8 @@ type FolderInfo struct {
 	FileCount int    `json:"fileCount"`
 	TotalSize int64  `json:"totalSize"` // 字节
 	UpdatedAt string `json:"updatedAt"`
+	// Auth 该文件夹是否设置了访问密码：远程访问需先认证才能查看/下载内容（本机回环豁免）。
+	Auth bool `json:"auth"`
 }
 
 // FileInfo 文件（或目录）信息。

@@ -39,8 +39,11 @@ func runServerWithWeb(cfg *config.Config) {
 	a.startHTTP()
 	a.startDiscovery()
 
-	url := fmt.Sprintf("http://%s:%d", a.mon.IP(), a.cfg.ListenPort)
-	fmt.Printf("🌐 文件空间界面已启动: %s\n", url)
+	// 本机打开界面用回环地址（局域网地址可能因防火墙/VPN/多网卡无法从本机浏览器访问），
+	// 局域网其他节点仍可通过 http://<本机IP>:端口 访问同一界面。
+	url := fmt.Sprintf("http://127.0.0.1:%d", a.cfg.ListenPort)
+	fmt.Printf("🌐 文件空间界面已启动: %s（局域网访问: http://%s:%d）\n",
+		url, a.mon.IP(), a.cfg.ListenPort)
 
 	openBrowser(url)
 

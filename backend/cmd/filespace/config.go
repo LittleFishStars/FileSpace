@@ -6,7 +6,7 @@ import (
 	"filespace/internal/config"
 )
 
-// loadConfig 按优先级加载配置：命令行 -c 指定的文件 > 默认值，-p 覆盖监听端口。
+// loadConfig 按优先级加载配置：命令行 -c 指定的文件 > 默认值，-p 覆盖监听端口，-P 覆盖访问密码。
 func loadConfig(opts *options) *config.Config {
 	cfg := config.DefaultConfig()
 	if opts.configPath != "" {
@@ -18,6 +18,9 @@ func loadConfig(opts *options) *config.Config {
 	}
 	if opts.port != 0 {
 		cfg.ListenPort = opts.port
+	}
+	if opts.passwd != "" {
+		cfg.Passwd = opts.passwd
 	}
 	return cfg
 }

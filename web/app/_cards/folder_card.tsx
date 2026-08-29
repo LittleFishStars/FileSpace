@@ -1,8 +1,9 @@
 'use client'
 
 import React from 'react'
-import { FolderOutlined } from '@ant-design/icons'
+import { FolderOutlined, LockOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
+import { Tooltip } from 'antd'
 
 /**
  * 文件夹卡片。
@@ -18,6 +19,8 @@ export interface FolderInfo {
   fileCount?: number
   /** 最近更新时间（可选） */
   updatedAt?: string
+  /** 该文件夹是否设置了访问密码（远程访问需先认证） */
+  auth?: boolean
 }
 
 /** 将字节数格式化为可读大小 */
@@ -58,8 +61,15 @@ export default function FolderCard({
           <FolderOutlined className="text-2xl" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-100">
-            {folder.name}
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {folder.name}
+            </span>
+            {folder.auth && (
+              <Tooltip title="该文件夹设置了访问密码，需输入密码才能访问">
+                <LockOutlined className="shrink-0 text-sm text-amber-500 dark:text-amber-400" />
+              </Tooltip>
+            )}
           </div>
           {folder.updatedAt && (
             <div className="text-xs text-neutral-500 dark:text-neutral-400">

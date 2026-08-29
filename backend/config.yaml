@@ -1,10 +1,12 @@
 # 文件空间后端配置示例
 port: 8080         # 开发默认端口（前端 dev 的 /api/* 代理指向此处；0 = 随机端口）
 name: ""           # 可选自定义节点名称
+# passwd: ""       # 默认访问密码（等价于 -P/--passwd）：应用于未显式设置密码的共享文件夹
 
 shared_folders:
   - path: "/home/ylxc/shared"
     name: "共享资料"
+    # passwd: "secret"   # 该文件夹的独立访问密码（留空表示开放，其他节点免密访问）
 
 discovery:
   service_name: "_filespace._tcp"

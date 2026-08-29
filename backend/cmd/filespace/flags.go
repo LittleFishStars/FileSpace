@@ -9,9 +9,10 @@ import (
 type options struct {
 	configPath string
 	port       int
-	addCwd     bool // -a/--add：在解析出的共享目录之外额外共享当前目录
-	thisOnly   bool // --this：仅共享当前目录
-	web        bool // --web：同时启动前端界面（静态导出）并在浏览器中打开
+	passwd     string // -P/--passwd：共享访问密码
+	addCwd     bool   // -a/--add：在解析出的共享目录之外额外共享当前目录
+	thisOnly   bool   // --this：仅共享当前目录
+	web        bool   // --web：同时启动前端界面（静态导出）并在浏览器中打开
 	showHelp   bool
 }
 
@@ -23,6 +24,8 @@ func parseFlags() (*options, []string) {
 	flag.StringVar(&opts.configPath, "c", "", "配置文件路径（-c, --config 简写）")
 	flag.IntVar(&opts.port, "port", 0, "监听端口（默认 8080）")
 	flag.IntVar(&opts.port, "p", 0, "监听端口（-p, --port 简写）")
+	flag.StringVar(&opts.passwd, "passwd", "", "共享访问密码")
+	flag.StringVar(&opts.passwd, "P", "", "共享访问密码（-P, --passwd 简写）")
 	flag.BoolVar(&opts.showHelp, "help", false, "显示帮助信息")
 	flag.BoolVar(&opts.showHelp, "h", false, "显示帮助信息（-h, --help 简写）")
 	flag.BoolVar(&opts.addCwd, "add", false, "额外共享当前文件夹")
@@ -49,6 +52,8 @@ func usage() {
   --web                   同时启动前端界面并在浏览器中打开（默认只启动后端 API）
   -c, --config <文件>     配置文件路径（YAML）
   -p, --port <端口>       监听端口（默认 8080）
+  -P, --passwd <密码>     设置共享访问密码（默认密码）：应用于本次共享的文件夹（未显式设置密码的），
+                          其他节点需输入密码才能查看/下载；本机不受影响。也可在 web 端添加共享时按文件夹单独设置
   -h, --help              显示本帮助信息
 
 命令:
@@ -62,6 +67,7 @@ func usage() {
   filespace --this                 仅共享当前目录
   filespace ~/docs /mnt/data       共享多个目录
   filespace -c config.yaml         使用配置文件
+  filespace -P secret -a           设置共享访问密码，并额外共享当前目录
 
 配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可在任何情况下额外共享当前目录，--this 可仅共享当前目录。
 检测到本机已有 filespace 后端在运行时（含运行在其他端口），本进程仅支持用目录参数或 -a 追加，把目录交给已运行的后端后自动退出。

@@ -7,7 +7,6 @@ FileSpace 构建脚本 - 打包模块
 """
 
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -35,7 +34,7 @@ def pack_windows(platform, version):
     out_dir = os.path.join(PACKAGES_DIR, "windows")
     os.makedirs(out_dir, exist_ok=True)
 
-    if shutil.which("wixl") and shutil.which("wixl-heat"):
+    if shutil.which("wixl"):
         msi_out = os.path.join(out_dir, "FileSpace-%s.msi" % version)
         try:
             _msi_installer(platform, version, msi_out)
@@ -46,56 +45,36 @@ def pack_windows(platform, version):
         print("   ⚠️ 跳过 .msi：%s" % TOOL_HINTS["wixl"])
 
 
-def _extract_balanced_block(text, start_pat):
-    """从 start_pat 匹配位置起，用 <Directory>/</Directory> 深度匹配提取完整块。"""
-    m = re.search(start_pat, text)
-    if not m:
-        return None
-    start = m.start()
-    depth = 0
-    pos = start
-    tag_re = re.compile(r"<(/?)Directory\b[^>]*>")
-    while pos < len(text):
-        t = tag_re.search(text, pos)
-        if not t:
-            break
-        depth += -1 if t.group(1) == "/" else 1
-        pos = t.end()
-        if depth == 0:
-            return text[start:pos]
-    return None
-
-
 def _msi_installer(platform, version, msi_out):
-    """用 msitools（wixl-heat + wixl）生成 Windows .msi。"""
+    """用 wixl 生成 Windows .msi。
+
+    注意：不再使用 wixl-heat 生成目录树——msitools 0.106 的 wixl-heat 对
+    文件直接位于 -p 前缀目录下的情况会生成两层 Name="" 空目录，wixl 编译时
+    报 libmsi_query_execute（无更多信息）。这里由脚本直接为每个文件生成
+    Component/File 元素，避免依赖 wixl-heat 的目录树输出。
+    """
     require_tool("wixl")
-    require_tool("wixl-heat")
     platform_dir = os.path.join(BUILD_DIR, platform.name)
     exe_path = os.path.join(platform_dir, binary_name(platform))
     work = os.path.join(PACKAGES_DIR, "windows")
     os.makedirs(work, exist_ok=True)
 
-    # 1) 收集后端二进制文件，交给 wixl-heat 生成目录树片段
+    # 1) 为每个后端二进制生成 Component/File 元素（相对 platform_dir 的路径）
     files = [exe_path]
-    proc = subprocess.run(
-        ["wixl-heat", "-p", platform_dir, "--component-group", "Files",
-         "--directory-ref", "INSTALLFOLDER"],
-        input="\n".join(files) + "\n", text=True, capture_output=True)
-    if proc.returncode != 0:
-        sys.exit("错误：wixl-heat 失败：%s" % proc.stderr.strip())
-    heat = proc.stdout.replace('Source="SourceDir//', 'Source="$(var.SourceDir)/')
+    comps, refs = [], []
+    for i, f in enumerate(files):
+        rel = os.path.relpath(f, platform_dir).replace("\\", "/")
+        cid = "cmpMain" if i == 0 else "cmp%d" % i
+        fid = "filMain" if i == 0 else "fil%d" % i
+        comps.append(
+            '      <Component Id="%s" Guid="*">\n'
+            '        <File Id="%s" KeyPath="yes" Source="$(var.SourceDir)/%s"/>\n'
+            '      </Component>' % (cid, fid, rel))
+        refs.append('      <ComponentRef Id="%s"/>' % cid)
+    comps_xml = "\n".join(comps)
+    refs_xml = "\n".join(refs)
 
-    # 2) 提取 filespace.exe 目录树与 ComponentRef 列表
-    exe_tree = _extract_balanced_block(heat, r'<Directory [^>]*Name="filespace">')
-    if not exe_tree:
-        # 回退：直接匹配第一个 Directory 块
-        exe_tree = _extract_balanced_block(heat, r'<Directory [^>]*Name="[^"]*">')
-    cg = re.search(r'<ComponentGroup Id="Files">(.*?)</ComponentGroup>', heat, re.S)
-    if not exe_tree or not cg:
-        sys.exit("错误：wixl-heat 输出格式异常，请检查 msitools 版本")
-    refs = cg.group(1)
-
-    # 3) 组装单树 .wxs
+    # 2) 组装单树 .wxs
     prod_id = str(uuid.uuid4()).upper()
     upgrade_code = str(uuid.uuid4()).upper()
     wxs = os.path.join(work, "filespace.wxs")
@@ -111,19 +90,19 @@ def _msi_installer(platform, version, msi_out):
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="FileSpace">
-%(exe_tree)s
+%(comps_xml)s
         </Directory>
       </Directory>
     </Directory>
     <Feature Id="Main" Title="%(name)s" Level="1">
-%(refs)s
+%(refs_xml)s
     </Feature>
   </Product>
 </Wix>
 """ % {"prod_id": prod_id, "name": APP_NAME, "version": version,
-       "upgrade_code": upgrade_code, "exe_tree": exe_tree, "refs": refs})
+       "upgrade_code": upgrade_code, "comps_xml": comps_xml, "refs_xml": refs_xml})
 
-    # 4) wixl 编译生成 .msi
+    # 3) wixl 编译生成 .msi
     run(["wixl", "-o", os.path.abspath(msi_out), "-D", "SourceDir=" + platform_dir, wxs])
 
 

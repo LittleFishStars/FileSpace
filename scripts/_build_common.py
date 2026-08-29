@@ -32,7 +32,6 @@ MAINTAINER = "FileSpace Developers"
 # 打包工具的缺失提示（key 为命令名）
 TOOL_HINTS = {
     "wixl": "Windows .msi 需要 msitools，安装：sudo pacman -S msitools",
-    "wixl-heat": "Windows .msi 需要 msitools，安装：sudo pacman -S msitools",
     "dpkg-deb": "Linux .deb 需要 dpkg，安装：sudo pacman -S dpkg",
     "makepkg": "Linux pacman 包需要 makepkg，安装：sudo pacman -S base-devel",
     "mksquashfs": "AppImage 需要 squashfs-tools，安装：sudo pacman -S squashfs-tools",

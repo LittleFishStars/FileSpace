@@ -35,7 +35,7 @@
     build/packages/linux/FileSpace-<版本>-x86_64.AppImage
 
 依赖的系统工具（缺失时脚本会提示安装命令）：
-    wixl / wixl-heat（msitools）→ Windows .msi
+    wixl（msitools）→ Windows .msi
     dpkg-deb（dpkg）          → Linux .deb
     makepkg（base-devel）     → Linux pacman 包
     mksquashfs（squashfs-tools）→ AppImage（type2 runtime 自动缓存）

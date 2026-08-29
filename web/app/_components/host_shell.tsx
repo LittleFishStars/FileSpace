@@ -16,12 +16,14 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
         status: node.status === 'online' ? 'online' : 'offline',
         uptime: node.uptime,
         softwareVersion: node.softwareVersion,
+        auth: node.auth === true,
         folders: folders.map((f) => ({
             id: f.id,
             name: f.name,
             fileCount: f.fileCount,
             totalSize: f.totalSize,
             updatedAt: f.updatedAt,
+            auth: f.auth === true,
         })),
     };
 }

@@ -1,7 +1,18 @@
 'use client'
 
 import React, {Suspense, useEffect, useState} from 'react';
-import {Alert, App as AntdApp, Breadcrumb, Button, Space, Spin, Table, Tooltip} from 'antd';
+import {
+  Alert,
+  App as AntdApp,
+  Breadcrumb,
+  Button,
+  Input,
+  Modal,
+  Space,
+  Spin,
+  Table,
+  Tooltip,
+} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
   DownloadOutlined,
@@ -10,6 +21,7 @@ import {
   FolderOutlined,
   FolderOpenOutlined,
   HomeOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import {useSearchParams} from 'next/navigation';
@@ -17,6 +29,8 @@ import AppShell from '../_components/app_shell';
 import FilePreview from '../_components/file_preview';
 import {formatSize} from '../_cards/folder_card';
 import {
+  ApiError,
+  authLogin,
   downloadUrl,
   fetchFolders,
   fetchNode,
@@ -43,6 +57,11 @@ function formatTime(iso: string): string {
     return d.toLocaleString('zh-CN', {hour12: false});
 }
 
+/** 访问令牌在 localStorage 的存储键（按节点 API 基地址 + 文件夹区分；不同文件夹密码可能不同） */
+function tokenKey(base: string, folderId: string): string {
+    return `filespace:token:${base || 'local'}:${folderId}`;
+}
+
 export default function FolderPage() {
     return (
         <Suspense fallback={null}>
@@ -67,6 +86,15 @@ function FolderBrowser() {
     const [previewFile, setPreviewFile] = useState<ApiFileInfo | null>(null);
     // 正在打开的本地文件路径（避免重复点击）
     const [opening, setOpening] = useState<string | null>(null);
+    // 远端节点是否设置了访问密码（本机节点不受影响，回环访问豁免）
+    const [authRequired, setAuthRequired] = useState(false);
+    // 已获取的访问令牌（localStorage 持久化，按节点 API 基地址区分）
+    const [token, setToken] = useState<string | null>(null);
+    // 密码输入弹框状态
+    const [authOpen, setAuthOpen] = useState(false);
+    const [authInput, setAuthInput] = useState('');
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [authSubmitting, setAuthSubmitting] = useState(false);
 
     // 加载文件夹信息（名称 / 磁盘路径 / 所属主机名 / 是否本机）
     useEffect(() => {
@@ -86,6 +114,8 @@ function FolderBrowser() {
                 let host = node.hostname;
                 let base = '';
                 let local = true;
+                // 该文件夹是否设置了访问密码（按文件夹判断：同一节点不同文件夹密码可能不同）
+                let folderAuth = false;
                 if (!found) {
                     for (const peer of peers) {
                         const f = peer.folders.find((x) => x.id === folderId);
@@ -94,6 +124,7 @@ function FolderBrowser() {
                             host = peer.node.hostname;
                             base = peer.node.listenAddr ? `http://${peer.node.listenAddr}` : '';
                             local = false;
+                            folderAuth = f.auth === true;
                             break;
                         }
                     }
@@ -106,6 +137,21 @@ function FolderBrowser() {
                 setHostname(host);
                 setIsLocal(local);
                 setRemoteBase(base);
+                // 文件夹设置了访问密码：恢复本机已保存的令牌，否则弹出密码输入框
+                const needAuth = !local && folderAuth;
+                setAuthRequired(needAuth);
+                if (needAuth) {
+                    const saved = localStorage.getItem(tokenKey(base, folderId));
+                    if (saved) {
+                        setToken(saved);
+                    } else {
+                        setToken(null);
+                        setAuthError(null);
+                        setAuthOpen(true);
+                    }
+                } else {
+                    setToken(null);
+                }
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
             }
@@ -123,18 +169,53 @@ function FolderBrowser() {
         async function load() {
             setEntries(null);
             setError(null);
+            // 远端节点需要密码但尚未认证：等待密码输入完成
+            if (authRequired && !token) return;
             try {
-                const list = await fetchTree(folderId, path, remoteBase);
+                const list = await fetchTree(folderId, path, remoteBase, token ?? undefined);
                 if (!cancelled) setEntries(list);
             } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
+                if (cancelled) return;
+                if (e instanceof ApiError && e.status === 401) {
+                    // 令牌缺失 / 已过期 / 密码不符：清除并重新要求输入密码
+                    localStorage.removeItem(tokenKey(remoteBase, folderId));
+                    setToken(null);
+                    setAuthError('访问令牌已失效，请重新输入密码');
+                    setAuthOpen(true);
+                    return;
+                }
+                setError(e instanceof Error ? e.message : '加载失败');
             }
         }
         load();
         return () => {
             cancelled = true;
         };
-    }, [folderId, path, remoteBase]);
+    }, [folderId, path, remoteBase, token, authRequired]);
+
+    /** 提交密码换取访问令牌，成功后刷新文件列表 */
+    const handleAuthSubmit = async () => {
+        setAuthSubmitting(true);
+        setAuthError(null);
+        try {
+            const t = await authLogin(remoteBase, authInput.trim());
+            localStorage.setItem(tokenKey(remoteBase, folderId), t);
+            setToken(t);
+            setAuthOpen(false);
+        } catch (e) {
+            setAuthError(e instanceof Error ? e.message : '认证失败');
+        } finally {
+            setAuthSubmitting(false);
+        }
+    };
+
+    /** 关闭密码弹框：未认证时提示无法访问 */
+    const handleAuthCancel = () => {
+        setAuthOpen(false);
+        if (authRequired && !token) {
+            setError('需要访问密码才能查看该文件夹');
+        }
+    };
 
     /** 本机文件：用系统默认应用打开（后端仅允许本机回环调用） */
     const handleOpen = async (record: ApiFileInfo) => {
@@ -240,7 +321,7 @@ function FolderBrowser() {
                                 type="link"
                                 size="small"
                                 icon={<DownloadOutlined/>}
-                                href={downloadUrl(folderId, record.path, remoteBase)}
+                                href={downloadUrl(folderId, record.path, remoteBase, token ?? undefined)}
                                 download
                             >
                                 下载
@@ -322,6 +403,11 @@ function FolderBrowser() {
             <div className="mb-4 flex items-center justify-between">
                 <Breadcrumb items={breadcrumbItems}/>
                 <Space>
+                    {authRequired && (
+                        <Tooltip title="该文件夹设置了访问密码，已认证">
+                            <LockOutlined className="text-amber-500 dark:text-amber-400"/>
+                        </Tooltip>
+                    )}
                     {folder && (
                         <span className="text-xs text-neutral-500 dark:text-neutral-400">
                             磁盘路径：{folder.path}
@@ -340,10 +426,34 @@ function FolderBrowser() {
                 <FilePreview
                     open={previewFile !== null}
                     onClose={() => setPreviewFile(null)}
-                    fileUrl={previewFile ? downloadUrl(folderId, previewFile.path, remoteBase) : ''}
+                    fileUrl={previewFile ? downloadUrl(folderId, previewFile.path, remoteBase, token ?? undefined) : ''}
                     fileName={previewFile?.name ?? ''}
                 />
             )}
+            {/* 文件夹设置了访问密码：输入密码换取访问令牌 */}
+            <Modal
+                open={authOpen}
+                title={<span><LockOutlined className="mr-2 text-amber-500"/>需要访问密码</span>}
+                okText="确定"
+                cancelText="取消"
+                confirmLoading={authSubmitting}
+                onOk={handleAuthSubmit}
+                onCancel={handleAuthCancel}
+            >
+                <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-300">
+                    共享文件夹「{folder?.name ?? '此文件夹'}」设置了访问密码，请输入密码以查看/下载文件。
+                </p>
+                <Input.Password
+                    value={authInput}
+                    onChange={(e) => setAuthInput(e.target.value)}
+                    onPressEnter={handleAuthSubmit}
+                    placeholder="访问密码"
+                    autoFocus
+                />
+                {authError && (
+                    <Alert type="error" showIcon className="mt-3" message={authError}/>
+                )}
+            </Modal>
         </AppShell>
     );
 }

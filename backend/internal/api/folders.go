@@ -19,9 +19,12 @@ func (s *Server) handleFolders(w http.ResponseWriter, r *http.Request) {
 // addFoldersRequest 追加共享目录的请求体。
 type addFoldersRequest struct {
 	Paths []string `json:"paths"`
+	// Password 新文件夹的可选访问密码（空表示开放）；仅对本机调用有效。
+	Password string `json:"password"`
 }
 
-// handleAddFolders 追加共享目录（本机另一个 filespace 进程探测到本后端后，把目录交过来）。
+// handleAddFolders 追加共享目录（本机另一个 filespace 进程探测到本后端后，把目录交过来；
+// 本机管理页添加共享文件夹时亦可指定该文件夹的访问密码）。
 // 仅允许本机（回环地址）调用，防止局域网内其他机器随意向本机追加共享目录。
 func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 	if !isLoopbackRequest(r) {
@@ -39,7 +42,7 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 	}
 	var added []model.FolderInfo
 	for _, p := range req.Paths {
-		f, err := s.folders.Add(p)
+		f, err := s.folders.Add(p, req.Password)
 		if errors.Is(err, share.ErrFolderExists) {
 			continue // 已在共享列表中，视为成功
 		}
@@ -47,7 +50,7 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "追加失败: "+err.Error())
 			return
 		}
-		added = append(added, model.FolderInfo{ID: f.ID, Name: f.Name, Path: f.Path})
+		added = append(added, model.FolderInfo{ID: f.ID, Name: f.Name, Path: f.Path, Auth: f.Passwd != ""})
 	}
 	writeJSON(w, map[string]any{"added": added})
 }
@@ -93,8 +96,13 @@ func isLoopbackRequest(r *http.Request) bool {
 }
 
 // handleTree 懒加载返回共享目录内的文件列表（?path=相对路径）。
+// 该文件夹设置了访问密码时，远程请求需携带绑定该文件夹密码的有效访问令牌（本机回环放行）。
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !s.authorized(r, id) {
+		writeError(w, http.StatusUnauthorized, "需要访问密码（未认证或令牌已过期）")
+		return
+	}
 	rel := r.URL.Query().Get("path")
 	entries, err := s.folders.Tree(id, rel)
 	if err != nil {

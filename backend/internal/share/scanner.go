@@ -2,6 +2,8 @@
 package share
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"hash/fnv"
@@ -31,6 +33,9 @@ type Folder struct {
 	ID   string
 	Name string
 	Path string
+	// Passwd 该文件夹的访问密码：为空表示对局域网开放；
+	// 设置后其他节点需先认证（换取访问令牌）才能查看/下载内容，本机回环访问不受影响。
+	Passwd string
 	// RealPath 解析符号链接后的真实路径，仅用于内部去重（识别指向同一目录的重复添加）。
 	RealPath string
 }
@@ -53,6 +58,7 @@ func NewManager(shared []config.SharedFolder) *Manager {
 			ID:       folderID(sf.Path),
 			Name:     name,
 			Path:     sf.Path,
+			Passwd:   sf.Passwd,
 			RealPath: realPath(sf.Path),
 		})
 	}
@@ -60,9 +66,9 @@ func NewManager(shared []config.SharedFolder) *Manager {
 }
 
 // Add 运行中追加一个共享目录：校验路径存在且为目录。
-// 去重仅针对指向同一目录的重复（精确路径或符号链接解析后的真实路径相同），
-// 不阻止同时共享父目录与其子目录。
-func (m *Manager) Add(path string) (Folder, error) {
+// password 为可选访问密码（空表示开放）；去重仅针对指向同一目录的重复
+// （精确路径或符号链接解析后的真实路径相同），不阻止同时共享父目录与其子目录。
+func (m *Manager) Add(path, password string) (Folder, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return Folder{}, err
@@ -82,9 +88,41 @@ func (m *Manager) Add(path string) (Folder, error) {
 			return f, ErrFolderExists
 		}
 	}
-	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs, RealPath: real}
+	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs, Passwd: password, RealPath: real}
 	m.folders = append(m.folders, f)
 	return f, nil
+}
+
+// HasPassword 是否存在设置了访问密码的共享文件夹。
+func (m *Manager) HasPassword() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.folders {
+		if m.folders[i].Passwd != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchPassword 判断密码是否匹配任一设置了访问密码的共享文件夹（常量时间比较，不暴露明文）。
+func (m *Manager) MatchPassword(password string) bool {
+	if password == "" {
+		return false
+	}
+	hash := sha256.Sum256([]byte(password))
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.folders {
+		if m.folders[i].Passwd == "" {
+			continue
+		}
+		folderHash := sha256.Sum256([]byte(m.folders[i].Passwd))
+		if subtle.ConstantTimeCompare(hash[:], folderHash[:]) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // realPath 返回路径解析符号链接后的真实路径；解析失败时原样返回（去重退化为精确匹配）。
@@ -124,6 +162,7 @@ func (m *Manager) List() []model.FolderInfo {
 			FileCount: count,
 			TotalSize: size,
 			UpdatedAt: updated.Format(time.RFC3339),
+			Auth:      f.Passwd != "",
 		})
 	}
 	return result
