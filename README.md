@@ -156,16 +156,3 @@ python3 scripts/build.py pack linux
 | `GET /api/folders/{id}/tree` | 文件树（懒加载） |
 | `GET /api/folders/{id}/download` | 文件下载（支持 Range 断点续传） |
 | `GET /api/peers` | mDNS 发现的其他节点（含其共享文件夹） |
-
-## 🗺 开发状态
-
-- [x] 前端：节点卡片、文件夹卡片、节点信息、深浅主题
-- [x] 前端：文件浏览（面包屑 / 文件列表 / 分页）
-- [x] 前端：在线预览（PDF 走浏览器原生，Office/代码/文本/图片等走 @smazeeapps/file-viewer，二进制回退下载）
-- [x] 后端：共享目录扫描 / 索引
-- [x] 后端：系统状态采集（跨平台：Linux / macOS / Windows）
-- [x] 后端：HTTP API（节点 / 文件夹 / 文件树 / 下载）
-- [x] 后端：mDNS 服务注册与发现
-- [x] 前后端合并：前端静态导出 + go:embed 嵌入后端（`--web` 模式）
-- [x] 前后端联调
-- [ ] 后端：文件变更实时监听（fsnotify）

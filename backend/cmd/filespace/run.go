@@ -94,7 +94,7 @@ func (a *app) startDiscovery() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	txt := map[string]string{"id": a.nodeID, "hostname": a.mon.Hostname(), "version": filespace.Version}
-	if _, err := discovery.Register(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.nodeID, a.cfg.ListenPort, txt); err != nil {
+	if err := discovery.Register(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.nodeID, a.cfg.ListenPort, txt); err != nil {
 		log.Printf("mDNS 注册失败: %v", err)
 	}
 	go discovery.Watch(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.peers, 3*time.Second)

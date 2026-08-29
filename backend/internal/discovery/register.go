@@ -8,19 +8,19 @@ import (
 )
 
 // Register 注册 mDNS 服务，使其他节点可以发现本节点。
-// 返回的 Server 在 ctx 取消时自动关闭。
-func Register(ctx context.Context, service, domain, instance string, port int, txt map[string]string) (*zeroconf.Server, error) {
+// ctx 取消时自动关闭注册的 Server。
+func Register(ctx context.Context, service, domain, instance string, port int, txt map[string]string) error {
 	records := make([]string, 0, len(txt))
 	for k, v := range txt {
 		records = append(records, k+"="+v)
 	}
 	server, err := zeroconf.Register(instance, service, domain, port, records, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	go func() {
 		<-ctx.Done()
 		server.Shutdown()
 	}()
-	return server, nil
+	return nil
 }

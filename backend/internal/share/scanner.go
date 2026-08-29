@@ -137,7 +137,7 @@ func folderID(path string) string {
 
 // scanFolder 统计目录内文件数、总大小与最近修改时间。
 func scanFolder(root string) (count int, size int64, updated time.Time) {
-	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -153,7 +153,8 @@ func scanFolder(root string) (count int, size int64, updated time.Time) {
 		}
 		return nil
 	})
-	if _, err := os.Stat(root); err != nil {
+	// 根目录不存在时（被删除等）返回零值，避免目录列表中出现异常数据
+	if errors.Is(err, fs.ErrNotExist) {
 		return 0, 0, time.Time{}
 	}
 	return count, size, updated

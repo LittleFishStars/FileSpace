@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -38,26 +39,20 @@ func appendPaths(args []string, addCwd bool) []string {
 }
 
 // probeBackend 探测端口上是否已有 filespace 后端在运行：
-//   - 返回 state.ErrBackendRunning：端口上是 filespace 后端
+//   - 返回 state.ErrBackendRunning：端口上是 filespace 后端（复用 state.BackendAlive 的探测逻辑）
 //   - 返回其他错误：端口被占用但并非 filespace
 //   - 返回 nil：端口空闲
 func probeBackend(port int) error {
-	client := &http.Client{Timeout: 800 * time.Millisecond}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/node", port))
+	if state.BackendAlive(port) {
+		return state.ErrBackendRunning
+	}
+	// 非 filespace 但被占用：TCP 能连上说明有其他服务在监听
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 800*time.Millisecond)
 	if err != nil {
 		return nil // 连接失败视为无后端；若端口被占用，后续 ListenAndServe 会兜底报错
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("端口 %d 上有服务响应但非 filespace（HTTP %d）", port, resp.StatusCode)
-	}
-	var info struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.ID == "" {
-		return fmt.Errorf("端口 %d 上的服务响应不符合 filespace 格式", port)
-	}
-	return state.ErrBackendRunning
+	conn.Close()
+	return fmt.Errorf("端口 %d 上有服务响应但非 filespace", port)
 }
 
 // sendAddFolders 把要追加的目录列表发给已运行的后端。

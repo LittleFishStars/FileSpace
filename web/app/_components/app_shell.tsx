@@ -47,6 +47,13 @@ function BrandMark() {
     );
 }
 
+/** 主题切换选项（模块级常量，避免每次渲染重建数组） */
+const THEME_OPTIONS = [
+    {label: '系统', value: 'system' as ThemeMode, icon: <DesktopOutlined/>},
+    {label: '浅色', value: 'light' as ThemeMode, icon: <SunOutlined/>},
+    {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
+];
+
 /**
  * 应用外壳：ProLayout 顶部导航 + 右上角主题切换 + 页面容器。
  * 各页面共用；标题可为纯文本（title），也可为面包屑形式（breadcrumb，
@@ -73,12 +80,6 @@ export default function AppShell({
     if (!mounted) {
         return <div className="min-h-screen"/>;
     }
-
-    const themeOptions = [
-        {label: '系统', value: 'system' as ThemeMode, icon: <DesktopOutlined/>},
-        {label: '浅色', value: 'light' as ThemeMode, icon: <SunOutlined/>},
-        {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
-    ];
 
     // 有面包屑时标题位置渲染为面包屑，否则回退为纯文本标题。
     const header =
@@ -107,7 +108,7 @@ export default function AppShell({
                     style={{marginRight: 16}}
                     value={mode}
                     onChange={(value) => setMode(value as ThemeMode)}
-                    options={themeOptions}
+                    options={THEME_OPTIONS}
                 />,
             ]}
         >

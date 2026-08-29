@@ -51,6 +51,8 @@ function FolderBrowser() {
     const folderId = searchParams.get('folderId') ?? '';
     const [folder, setFolder] = useState<ApiFolderInfo | null>(null);
     const [hostname, setHostname] = useState('');
+    // 文件夹所属节点的 API 基地址：本机为空字符串（同源/反代），远端为 http://<ip>:<port>
+    const [remoteBase, setRemoteBase] = useState('');
     const [path, setPath] = useState('');
     const [entries, setEntries] = useState<ApiFileInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -68,15 +70,18 @@ function FolderBrowser() {
                     fetchPeers(),
                 ]);
                 if (cancelled) return;
-                // 先在本机共享的文件夹中查找，未命中再到 mDNS 发现的节点中查找
+                // 先在本机共享的文件夹中查找，未命中再到 mDNS 发现的节点中查找。
+                // 远端节点上的文件夹需通过该节点自己的后端直连（本地后端不认识其 id）。
                 let found = folders.find((f) => f.id === folderId);
                 let host = node.hostname;
+                let base = '';
                 if (!found) {
                     for (const peer of peers) {
                         const f = peer.folders.find((x) => x.id === folderId);
                         if (f) {
                             found = f;
                             host = peer.node.hostname;
+                            base = peer.node.listenAddr ? `http://${peer.node.listenAddr}` : '';
                             break;
                         }
                     }
@@ -87,6 +92,7 @@ function FolderBrowser() {
                 }
                 setFolder(found);
                 setHostname(host);
+                setRemoteBase(base);
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
             }
@@ -105,7 +111,7 @@ function FolderBrowser() {
             setEntries(null);
             setError(null);
             try {
-                const list = await fetchTree(folderId, path);
+                const list = await fetchTree(folderId, path, remoteBase);
                 if (!cancelled) setEntries(list);
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
@@ -115,7 +121,7 @@ function FolderBrowser() {
         return () => {
             cancelled = true;
         };
-    }, [folderId, path]);
+    }, [folderId, path, remoteBase]);
 
     // 面包屑：根目录 + 各级目录
     const segments = path ? path.split('/') : [];
@@ -195,7 +201,7 @@ function FolderBrowser() {
                                 type="link"
                                 size="small"
                                 icon={<DownloadOutlined/>}
-                                href={downloadUrl(folderId, record.path)}
+                                href={downloadUrl(folderId, record.path, remoteBase)}
                                 download
                             >
                                 下载
@@ -225,7 +231,7 @@ function FolderBrowser() {
             <Alert
                 type="error"
                 showIcon
-                message="加载失败"
+                title="加载失败"
                 description={error}
                 action={
                     <Button type="primary" size="small" onClick={() => setPath('')}>
@@ -285,7 +291,7 @@ function FolderBrowser() {
             <FilePreview
                 open={previewFile !== null}
                 onClose={() => setPreviewFile(null)}
-                fileUrl={previewFile ? downloadUrl(folderId, previewFile.path) : ''}
+                fileUrl={previewFile ? downloadUrl(folderId, previewFile.path, remoteBase) : ''}
                 fileName={previewFile?.name ?? ''}
             />
         </AppShell>

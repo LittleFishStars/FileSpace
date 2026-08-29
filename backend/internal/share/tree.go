@@ -54,7 +54,16 @@ func (m *Manager) Tree(id, rel string) ([]model.FileInfo, error) {
 // isPreviewable 判断文件是否可在线预览：
 //  1. 文本类（泛指所有能以文本读取的文件，含代码/CSV/JSON/Markdown/HTML/XML 等）——按内容嗅探 MIME
 //  2. 非文本但 FileViewer 可渲染的：图片 / 视频 / PDF / Office（docx/pptx/xlsx 本质是 zip，按扩展名补判）
+//
+// 已知扩展名（Office / 常见二进制）优先短路，避免对每个文件都打开读取头部。
 func isPreviewable(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx":
+		return true
+	case ".exe", ".dll", ".so", ".dylib", ".bin", ".iso", ".img",
+		".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".zst", ".deb", ".rpm", ".msi":
+		return false
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return false
@@ -68,10 +77,6 @@ func isPreviewable(path string) bool {
 		return true
 	}
 	if strings.HasPrefix(mime, "image/") || strings.HasPrefix(mime, "video/") || mime == "application/pdf" {
-		return true
-	}
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx":
 		return true
 	}
 	return false

@@ -52,10 +52,14 @@ export const fetchFolders = () => fetchJSON<ApiFolderInfo[]>('/api/folders')
 
 export const fetchPeers = () => fetchJSON<ApiPeerInfo[]>('/api/peers')
 
-/** 懒加载共享目录内的文件列表 */
-export const fetchTree = (folderId: string, path: string) =>
-  fetchJSON<ApiFileInfo[]>(`/api/folders/${folderId}/tree?path=${encodeURIComponent(path)}`)
+/**
+ * 懒加载共享目录内的文件列表。
+ * base 为文件夹所属节点的 API 基地址：本机为空字符串（同源/反代），
+ * 远端节点为 http://<ip>:<port>（该文件夹由远端后端管理，需直连其 API）。
+ */
+export const fetchTree = (folderId: string, path: string, base = '') =>
+  fetchJSON<ApiFileInfo[]>(`${base}/api/folders/${folderId}/tree?path=${encodeURIComponent(path)}`)
 
-/** 生成文件下载/查看 URL */
-export const downloadUrl = (folderId: string, path: string) =>
-  `/api/folders/${folderId}/download?path=${encodeURIComponent(path)}`
+/** 生成文件下载/查看 URL（base 语义同 fetchTree） */
+export const downloadUrl = (folderId: string, path: string, base = '') =>
+  `${base}/api/folders/${folderId}/download?path=${encodeURIComponent(path)}`
