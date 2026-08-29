@@ -97,25 +97,23 @@ export default function DashboardPanel() {
     } else {
         content = (
             <div className="flex flex-col gap-4">
-                {/* 品牌区：logo + 标题 + 软件版本 */}
-                <ProCard bordered bodyStyle={{padding: '32px 16px'}}>
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-100 text-blue-600 dark:bg-blue-400/20 dark:text-blue-400">
-                            <BrandMark className="h-12 w-12"/>
-                        </div>
-                        <div className="text-center">
-                            <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-                                文件空间
-                            </div>
-                            <div className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                                FileSpace · 局域网文件共享
-                            </div>
-                        </div>
-                        <Tag icon={<RocketOutlined/>} color="blue">
-                            v{node.softwareVersion}
-                        </Tag>
+                {/* 品牌区：logo + 标题 + 软件版本（无边框） */}
+                <div className="flex flex-col items-center gap-4 pb-2">
+                    <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-blue-100 text-blue-600 dark:bg-blue-400/20 dark:text-blue-400">
+                        <BrandMark className="h-20 w-20"/>
                     </div>
-                </ProCard>
+                    <div className="text-center">
+                        <div className="text-4xl font-bold tracking-wide text-neutral-900 dark:text-neutral-100">
+                            文件空间
+                        </div>
+                        <div className="mt-1 text-base text-neutral-500 dark:text-neutral-400">
+                            FileSpace · 局域网文件共享
+                        </div>
+                    </div>
+                    <Tag icon={<RocketOutlined/>} color="blue">
+                        v{node.softwareVersion}
+                    </Tag>
+                </div>
 
                 {/* 全局统计 */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
