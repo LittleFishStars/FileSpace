@@ -14,8 +14,8 @@ import (
 // ErrBackendRunning 标记已有 filespace 后端在运行（锁文件存在且端口存活）。
 var ErrBackendRunning = errors.New("已有 filespace 后端在运行")
 
-// 运行锁文件名：running-<端口>.lock，端口编码在文件名中。
-const lockPrefix = "running-"
+// lockFile 运行锁文件名：内容为运行中后端的端口。
+const lockFile = "lock"
 
 // RunningLock 一次持有的运行锁。
 type RunningLock struct {
@@ -23,9 +23,9 @@ type RunningLock struct {
 }
 
 // AcquireRunningLock 用锁文件标识是否已有后端在运行：
-//   - 锁文件存在且对应端口有活的 filespace 后端 → 返回 (nil, 端口, nil)，调用方移交后退出
+//   - 锁文件存在且内容端口有活的 filespace 后端 → 返回 (nil, 端口, nil)，调用方移交后退出
 //   - 锁文件存在但端口无响应（崩溃残留）→ 删除残留锁文件后重建
-//   - 无锁文件 → 创建并持有（退出时调用 Release 删除）
+//   - 无锁文件 → 创建并写入本进程端口（退出时调用 Release 删除）
 func AcquireRunningLock(port int) (*RunningLock, int, error) {
 	dir, err := dir()
 	if err != nil {
@@ -34,25 +34,16 @@ func AcquireRunningLock(port int) (*RunningLock, int, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, 0, err
 	}
-	// 1. 扫描所有锁文件：存在且端口存活 → 已有后端；存在但端口无响应 → 崩溃残留，清理
-	entries, err := os.ReadDir(dir)
-	if err == nil {
-		for _, e := range entries {
-			if !isLockName(e.Name()) {
-				continue
-			}
-			p, err := lockPort(e.Name())
-			if err != nil {
-				continue
-			}
-			if backendAlive(p) {
-				return nil, p, nil
-			}
-			_ = os.Remove(filepath.Join(dir, e.Name()))
+	path := filepath.Join(dir, lockFile)
+	// 锁文件存在：读取内容端口，探测是否存活
+	if _, err := os.Stat(path); err == nil {
+		if p := readLockPort(path); p > 0 && backendAlive(p) {
+			return nil, p, nil
 		}
+		// 崩溃残留（端口无响应或内容无效）：删除后重建
+		_ = os.Remove(path)
 	}
-	// 2. 创建自己端口的锁文件（内容记录端口，便于排查）
-	path := filepath.Join(dir, lockName(port))
+	// 创建锁文件并写入本进程端口
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, 0, err
@@ -73,6 +64,21 @@ func (l *RunningLock) Release() error {
 	return os.Remove(l.path)
 }
 
+// readLockPort 读取锁文件中的端口；容忍创建后写入的短暂窗口（重试），读不到返回 0。
+func readLockPort(path string) int {
+	for i := 0; i < 10; i++ {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			var p int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &p); err == nil && p > 0 {
+				return p
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return 0
+}
+
 // backendAlive 探测端口上是否运行着活的 filespace 后端。
 func backendAlive(port int) bool {
 	client := &http.Client{Timeout: 800 * time.Millisecond}
@@ -91,24 +97,4 @@ func backendAlive(port int) bool {
 		return false
 	}
 	return true
-}
-
-// lockName 由端口生成锁文件名。
-func lockName(port int) string {
-	return fmt.Sprintf("%s%d.lock", lockPrefix, port)
-}
-
-// isLockName 判断文件名是否为运行锁。
-func isLockName(name string) bool {
-	return strings.HasPrefix(name, lockPrefix) && strings.HasSuffix(name, ".lock")
-}
-
-// lockPort 从锁文件名解析端口。
-func lockPort(name string) (int, error) {
-	s := strings.TrimSuffix(strings.TrimPrefix(name, lockPrefix), ".lock")
-	var p int
-	if _, err := fmt.Sscanf(s, "%d", &p); err != nil || p <= 0 {
-		return 0, errors.New("无效端口")
-	}
-	return p, nil
 }
