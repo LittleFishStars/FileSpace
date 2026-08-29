@@ -163,21 +163,19 @@ export default function DashboardPanel() {
                     </ProCard>
                 </div>
 
-                {/* 快捷入口 */}
-                <ProCard bordered bodyStyle={{padding: 16}}>
-                    <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                        <Link href="/nodes">
-                            <Button type="primary" size="large" icon={<CloudServerOutlined/>}>
-                                浏览局域网节点
-                            </Button>
-                        </Link>
-                        <Link href="/local">
-                            <Button size="large" icon={<SettingOutlined/>}>
-                                管理本机共享
-                            </Button>
-                        </Link>
-                    </div>
-                </ProCard>
+                {/* 快捷入口（无边框） */}
+                <div className="flex flex-col items-center gap-3 pt-2 sm:flex-row sm:justify-center">
+                    <Link href="/nodes">
+                        <Button type="primary" size="large" icon={<CloudServerOutlined/>}>
+                            浏览局域网节点
+                        </Button>
+                    </Link>
+                    <Link href="/local">
+                        <Button size="large" icon={<SettingOutlined/>}>
+                            管理本机共享
+                        </Button>
+                    </Link>
+                </div>
             </div>
         );
     }
