@@ -378,7 +378,7 @@ function FolderBrowser() {
         );
     }
 
-    // 页面级面包屑：本机文件夹回到「本机管理」，远程文件夹回到「主机列表 > 主机名」
+    // 页面级面包屑：本机文件夹回到「本机管理」，远程文件夹回到「局域网节点 > 主机名」
     const pageBreadcrumb =
         folder && (hostname || isLocal)
             ? isLocal
@@ -387,7 +387,7 @@ function FolderBrowser() {
                       {title: folder.name},
                   ]
                 : [
-                      {title: '主机列表', href: '/'},
+                      {title: '局域网节点', href: '/nodes'},
                       {title: hostname},
                       {title: folder.name},
                   ]
@@ -398,7 +398,7 @@ function FolderBrowser() {
             wide
             title="文件夹"
             breadcrumb={pageBreadcrumb}
-            menuActivePath={isLocal ? '/local' : '/'}
+            menuActivePath={isLocal ? '/local' : '/nodes'}
         >
             <div className="mb-4 flex items-center justify-between">
                 <Breadcrumb items={breadcrumbItems}/>
@@ -413,9 +413,9 @@ function FolderBrowser() {
                             磁盘路径：{folder.path}
                         </span>
                     )}
-                    <Link href={isLocal ? '/local' : '/'}>
+                    <Link href={isLocal ? '/local' : '/nodes'}>
                         <Button size="small" icon={<HomeOutlined/>}>
-                            {isLocal ? '返回本机管理' : '返回主机列表'}
+                            {isLocal ? '返回本机管理' : '返回局域网节点'}
                         </Button>
                     </Link>
                 </Space>

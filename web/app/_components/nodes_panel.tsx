@@ -2,7 +2,6 @@
 
 import React, {useEffect, useState} from 'react';
 import {Alert, Empty, Spin} from 'antd';
-import AppShell from './app_shell';
 import HostCard, {type HostInfo} from '../_cards/host_card';
 import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo} from '../_lib/api';
 
@@ -29,10 +28,11 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
 }
 
 /**
- * 局域网节点页（/）：展示 mDNS 发现的其他节点（本机节点不在此列出，
+ * 局域网节点面板：展示 mDNS 发现的其他节点（本机节点不在此列出，
  * 本机节点通过顶栏选项卡切到 /local 管理）。
+ * 被 /nodes 局域网节点页使用。
  */
-export default function HostShell() {
+export default function NodesPanel() {
     const [hosts, setHosts] = useState<HostInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -85,9 +85,5 @@ export default function HostShell() {
         );
     }
 
-    return (
-        <AppShell wide title="局域网节点">
-            {content}
-        </AppShell>
-    );
+    return content;
 }
