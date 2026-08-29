@@ -228,6 +228,7 @@ export default function LocalPanel() {
                     bodyStyle={{padding: 16}}
                 >
                     <NodeInfoCard
+                        collapsible={false}
                         info={{
                             ip: node.ip,
                             os: node.os,

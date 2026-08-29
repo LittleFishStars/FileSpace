@@ -12,8 +12,9 @@ import {
 
 /**
  * 节点信息卡片。
- * 抽象出节点的运行信息：IP、操作系统、软件版本、运行时间，
- * 以折叠卡片的形式呈现（默认折叠）。
+ * 抽象出节点的运行信息：IP、操作系统、软件版本、运行时间。
+ * 默认以折叠卡片的形式呈现（collapsible=true，局域网节点卡片用）；
+ * 本机节点等场景可关闭折叠（collapsible=false），直接平铺展示。
  */
 export interface NodeInfo {
   ip: string
@@ -46,13 +47,31 @@ function InfoItem({
   )
 }
 
-export default function NodeInfoCard({ info }: { info: NodeInfo }) {
+export default function NodeInfoCard({
+  info,
+  collapsible = true,
+}: {
+  info: NodeInfo
+  /** 是否以折叠卡片呈现（默认折叠）；false 时直接平铺 */
+  collapsible?: boolean
+}) {
   const infoItems = [
     { icon: <WifiOutlined />, label: 'IP 地址', value: info.ip },
     { icon: <LaptopOutlined />, label: '操作系统', value: info.os },
     { icon: <TagsOutlined />, label: '软件版本', value: info.softwareVersion },
     { icon: <ClockCircleOutlined />, label: '运行时间', value: info.uptime },
   ]
+
+  // 不折叠：直接平铺，大屏一行四个、中屏两行两个、小屏四行一个
+  if (!collapsible) {
+    return (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {infoItems.map((item) => (
+          <InfoItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <Collapse
