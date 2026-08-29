@@ -317,7 +317,7 @@ function FolderBrowser() {
             wide
             title="文件夹"
             breadcrumb={pageBreadcrumb}
-            topTabsActiveKey={isLocal ? 'local' : 'lan'}
+            menuActivePath={isLocal ? '/local' : '/'}
         >
             <div className="mb-4 flex items-center justify-between">
                 <Breadcrumb items={breadcrumbItems}/>
