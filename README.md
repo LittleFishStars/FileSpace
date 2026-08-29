@@ -32,7 +32,7 @@
 .
 ├── Makefile              # 编译入口（构建委托给 scripts/build.py）
 ├── scripts/              # 构建脚本
-│   ├── build.py          # 前端静态导出 + go:embed + 按平台编译后端 + 打包安装包
+│   ├── build.py          # 前端静态导出 + go:embed + 按平台编译后端
 │   ├── dev.py            # 开发启动：前端 + 后端
 │   └── assets/           # 安装包图标源（scripts/assets/filespace.svg）
 ├── web/                  # 前端（Next.js + antd + Tailwind v4）
@@ -102,28 +102,6 @@ python3 scripts/build.py --clean      # 清理构建产物
 # 启动后端 + 前端界面，并在浏览器中打开
 ./build/linux/filespace --web
 ```
-
-### 打包安装包
-
-`pack` 自动确保先构建产物，输出到 `build/packages/<平台>/`：
-
-```bash
-make pack                     # Windows .msi + Linux deb/pacman/AppImage
-make pack-windows             # build/packages/windows/FileSpace-<版本>.msi
-make pack-linux               # build/packages/linux/ 下 deb + pacman + AppImage
-# 等价直接调用脚本
-python3 scripts/build.py pack windows
-python3 scripts/build.py pack linux
-```
-
-| 平台 | 格式 | 依赖工具 |
-|---|---|---|
-| Windows | `.msi` | `wixl`（`sudo pacman -S msitools`） |
-| Linux | `.deb` | `dpkg-deb`（`sudo pacman -S dpkg`） |
-| Linux | `.pkg.tar.zst` | `makepkg`（`sudo pacman -S base-devel`） |
-| Linux | `.AppImage` | `mksquashfs`（`sudo pacman -S squashfs-tools`）+ type2 runtime（首次自动缓存到 `build/tools/appimage-cache/`） |
-
-> 桌面入口文件的 `Exec` 为 `filespace --web`，AppImage 的 `AppRun` 执行 `filespace --web`。应用图标由 `scripts/assets/filespace.svg` 生成（需要 `librsvg`）。
 
 ## 🧩 工作原理
 
