@@ -91,7 +91,7 @@ export default function HostShell() {
     return (
         <AppShell
             wide
-            title="主机列表"
+            title={tab === 'lan' ? '局域网节点' : '本机节点'}
             topTabs={{
                 items: [
                     {key: 'lan', label: '局域网节点'},
