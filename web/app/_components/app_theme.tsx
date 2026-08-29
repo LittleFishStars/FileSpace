@@ -117,7 +117,6 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
     // 主题切换后（新样式已由 cssinjs 在 useInsertionEffect 中插入），
     // 在绘制前清理旧主题的重复组件样式节点，避免后插入的旧主题样式持续覆盖当前主题
     useLayoutEffect(() => {
-        if (typeof window === 'undefined') return;
         pruneDuplicateStyles();
     }, [isDark]);
 
@@ -131,10 +130,11 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
             <ConfigProvider
                 locale={zhCN}
                 theme={{
-                    // cssVar 模式：token 输出为 :root 上的 CSS 变量（--ant-*），组件样式引用变量。
-                    // 主题切换时仅更新同一变量节点的值，组件样式不重新生成，
-                    // 避免 cssinjs 样式节点按插入顺序排队导致旧主题样式被后插入的新主题样式覆盖
-                    // （症状：暗→亮正常，亮→暗时 antd 组件背景仍保持亮色）。
+                    // cssVar 模式：antd token 输出为 CSS 变量（--ant-*），组件样式引用变量。
+                    // 主题切换时仅更新变量节点的值，antd 原生组件样式不重新生成，
+                    // 从而避免 cssinjs 样式节点按插入顺序排队覆盖的问题（antd 原生组件部分）。
+                    // pro-components 样式为硬编码 token 值（不受 cssVar 影响），
+                    // 由下方 useLayoutEffect 中的 pruneDuplicateStyles 兜底清理。
                     cssVar: {},
                     algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
                     token: {

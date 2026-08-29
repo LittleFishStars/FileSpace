@@ -6,6 +6,7 @@ import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
 import Link from 'next/link';
 import {usePathname, useRouter} from 'next/navigation';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
+import BrandMark from './brand_mark';
 import {useTheme, type ThemeMode} from './app_theme';
 
 /**
@@ -29,23 +30,6 @@ function getServerSnapshot() {
 export interface BreadcrumbItem {
     title: React.ReactNode;
     href?: string;
-}
-
-/** 品牌标志：互联网络标识，用 currentColor 随主题（浅/深）自适应 */
-function BrandMark() {
-    return (
-        <svg viewBox="74 85 390 383" className="h-7 w-7" aria-hidden>
-            <g stroke="currentColor" strokeWidth={14} strokeLinecap="round" fill="none">
-                <path d="M214.6 192.3 L358.3 244.9"/>
-                <path d="M181.1 225.6 L235.1 373.9"/>
-                <path d="M366.9 284.7 L268.8 381.5"/>
-                <circle cx="394" cy="258" r="38"/>
-                <circle cx="246" cy="404" r="32"/>
-                <circle cx="162" cy="173" r="56"/>
-                <circle cx="162" cy="173" r="19" strokeWidth={9}/>
-            </g>
-        </svg>
-    );
 }
 
 /** 主题切换选项（模块级常量，避免每次渲染重建数组） */
@@ -116,7 +100,7 @@ export default function AppShell({
     return (
         <ProLayout
             title="文件空间"
-            logo={<BrandMark/>}
+            logo={<BrandMark className="h-7 w-7"/>}
             layout="top"
             route={TOP_MENU}
             location={{pathname: menuActivePath ?? pathname}}

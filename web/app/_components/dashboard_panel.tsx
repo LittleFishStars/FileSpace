@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import Link from 'next/link';
 import {ProCard} from '@ant-design/pro-components';
+import BrandMark from './brand_mark';
 import {useTheme} from './app_theme';
 import {formatSize} from '../_cards/folder_card';
 import {
@@ -28,23 +29,6 @@ import {
  * 在线节点数（本机 + mDNS 发现的在线节点）、共享的总文件夹数、共享的总文件大小，
  * 并提供进入局域网节点 / 本机节点管理的快捷入口。
  */
-
-/** 品牌标志：与 filespace-mark.svg 一致，stroke 用 currentColor 随主题（浅/深）自适应 */
-function BrandMark({className}: {className?: string}) {
-    return (
-        <svg viewBox="74 85 390 383" className={className} role="img" aria-label="文件空间 FileSpace">
-            <g stroke="currentColor" strokeWidth={14} strokeLinecap="round" fill="none">
-                <path d="M214.6 192.3 L358.3 244.9"/>
-                <path d="M181.1 225.6 L235.1 373.9"/>
-                <path d="M366.9 284.7 L268.8 381.5"/>
-                <circle cx="394" cy="258" r="38"/>
-                <circle cx="246" cy="404" r="32"/>
-                <circle cx="162" cy="173" r="56"/>
-                <circle cx="162" cy="173" r="19" strokeWidth={9}/>
-            </g>
-        </svg>
-    );
-}
 
 export default function DashboardPanel() {
     const {isDark, setMode} = useTheme();
@@ -107,7 +91,7 @@ export default function DashboardPanel() {
                         title="点击切换亮暗主题"
                         onClick={() => setMode(isDark ? 'light' : 'dark')}
                     >
-                        <BrandMark className="h-20 w-20"/>
+                        <BrandMark className="h-20 w-20" label="文件空间 FileSpace"/>
                     </div>
                     <div className="text-center">
                         <div className="text-4xl font-bold tracking-wide text-neutral-900 dark:text-neutral-100">
