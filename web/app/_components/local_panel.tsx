@@ -236,9 +236,6 @@ export default function LocalPanel() {
                             uptime: node.uptime,
                         }}
                     />
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                        本机节点不出现在局域网节点列表中，共享文件夹仅本机可修改。
-                    </div>
                 </ProCard>
 
                 {/* 共享文件夹管理 */}
