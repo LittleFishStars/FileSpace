@@ -279,7 +279,7 @@ export default function LocalPage() {
     }
 
     return (
-        <AppShell title="本机管理">
+        <AppShell wide title="本机管理">
             {content}
 
             {/* 添加共享文件夹弹窗：每行一个目录绝对路径 */}
