@@ -1,6 +1,6 @@
 'use client'
 
-import React, {createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import React, {createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {App as AntdApp, ConfigProvider, theme as antdTheme} from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 
@@ -44,6 +44,53 @@ function readStoredMode(): ThemeMode {
     return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
 }
 
+/**
+ * 提取样式文本的「选择器签名」：所有规则选择器（跳过 @ 规则）去重排序后拼接。
+ * 同一组件在亮/暗主题下的样式节点选择器相同、仅属性值不同 → 签名相同。
+ */
+function selectorSignature(text: string): string {
+    const sels = new Set<string>();
+    const re = /([^{}]+)\{/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+        const sel = m[1].trim();
+        if (!sel || sel.startsWith('@')) continue;
+        sels.add(sel);
+    }
+    return [...sels].sort().join('|');
+}
+
+/**
+ * 清理同组件的旧主题样式节点。
+ *
+ * 背景：cssinjs 主题切换时，新主题的组件样式以新的 styleId 追加到 <head> 队尾，
+ * 旧主题节点不删除、位置不变（非 cssVar 模式的 pro-components 样式为硬编码 token 值，
+ * 每次切换都会生成新节点）。切回旧主题时 updateCSS 只更新已存在节点的内容、不重排位置，
+ * 导致后插入的节点永远覆盖先插入的节点（如亮色卡片样式持续覆盖暗色）。
+ *
+ * 这里在主题切换后按「选择器签名」分组，每组保留最后一个（当前主题）节点，
+ * 删除前面的旧主题重复节点。CSS 变量节点（含 --ant-）与纯 @keyframes 节点被排除。
+ */
+function pruneDuplicateStyles() {
+    const nodes = Array.from(document.querySelectorAll<HTMLStyleElement>('style[data-rc-order="prependQueue"]'));
+    const groups = new Map<string, HTMLStyleElement[]>();
+    for (const node of nodes) {
+        const text = node.textContent ?? '';
+        // 跳过 CSS 变量节点（自定义属性 --ant-*）与无选择器节点（keyframes 等）
+        if (text.includes('--ant-')) continue;
+        const sig = selectorSignature(text);
+        if (!sig) continue;
+        const list = groups.get(sig);
+        if (list) list.push(node);
+        else groups.set(sig, [node]);
+    }
+    for (const list of groups.values()) {
+        if (list.length > 1) {
+            for (const node of list.slice(0, -1)) node.remove();
+        }
+    }
+}
+
 export default function AppTheme({children}: { children: React.ReactNode }) {
     const systemDark = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
     // 持久化偏好用惰性初始值读取（服务端回退为 system），避免在 effect 中同步 setState
@@ -65,6 +112,13 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
         const root = document.documentElement;
         if (isDark) root.classList.add('dark');
         else root.classList.remove('dark');
+    }, [isDark]);
+
+    // 主题切换后（新样式已由 cssinjs 在 useInsertionEffect 中插入），
+    // 在绘制前清理旧主题的重复组件样式节点，避免后插入的旧主题样式持续覆盖当前主题
+    useLayoutEffect(() => {
+        if (typeof window === 'undefined') return;
+        pruneDuplicateStyles();
     }, [isDark]);
 
     const value = useMemo<ThemeContextValue>(
