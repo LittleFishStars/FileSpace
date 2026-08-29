@@ -32,7 +32,7 @@ type app struct {
 }
 
 // runServer 启动 HTTP API 服务与 mDNS 发现，等待退出信号后优雅关闭。
-// 界面（前端静态资源）由前端程序 filespace-web 托管，本进程只提供 API。
+// 界面（前端静态资源）由前端程序（Next.js standalone，node start.js）托管，本进程只提供 API。
 func runServer(cfg *config.Config) {
 	a := &app{cfg: cfg}
 	a.build()
@@ -70,7 +70,7 @@ func (a *app) startHTTP() {
 
 // printStartup 打印服务地址与共享目录列表。
 func (a *app) printStartup() {
-	fmt.Printf("🌐 后端 API 已启动: http://%s:%d（界面请运行 filespace-web）\n", a.mon.IP(), a.cfg.ListenPort)
+	fmt.Printf("🌐 后端 API 已启动: http://%s:%d（前端界面由 Next.js 独立运行: node web/start.js）\n", a.mon.IP(), a.cfg.ListenPort)
 	fmt.Printf("📂 共享 %d 个目录:\n", len(a.cfg.Shared))
 	for _, f := range a.cfg.Shared {
 		fmt.Printf("   - %s（%s）\n", f.Path, f.Name)

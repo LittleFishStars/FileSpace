@@ -64,20 +64,6 @@ func (l *RunningLock) Release() error {
 	return os.Remove(l.path)
 }
 
-// ReadLockPort 读取锁文件记录的端口（容忍写入窗口）；文件缺失或内容无效时 ok=false。
-// 供前端程序 filespace-web 启动时定位后端。
-func ReadLockPort() (int, bool) {
-	p, err := path(lockFile)
-	if err != nil {
-		return 0, false
-	}
-	if _, err := os.Stat(p); err != nil {
-		return 0, false
-	}
-	port := readLockPort(p)
-	return port, port > 0
-}
-
 // BackendAlive 探测端口上是否运行着活的 filespace 后端。
 func BackendAlive(port int) bool {
 	return backendAlive(port)

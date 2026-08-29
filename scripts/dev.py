@@ -5,7 +5,7 @@
 
 前端（Next.js dev server）启动时读取后端锁文件获取端口；若后端尚未启动，
 则自动拉起一个后端（go run，端口取空闲端口），并把实际端口通过
-FILESPACE_BACKEND 环境变量交给 next dev（next.config.ts 的 /api 代理目标）。
+FILESPACE_BACKEND 环境变量交给 next dev（web/proxy.ts 据此反代 /api/*）。
 
 用法：
     python3 scripts/dev.py        # 等价 make dev-web / make dev

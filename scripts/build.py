@@ -16,16 +16,17 @@
     python3 scripts/build.py pack linux        # Linux：deb + pacman + AppImage
 
 产物输出到 build/<平台>/（每个平台目录是一个完整可分发单元）：
-    build/linux/filespace         + build/linux/filespace-web + build/linux/web/
-    build/windows/filespace.exe   + build/windows/filespace-web.exe + build/windows/web/
-    build/darwin/filespace        + build/darwin/filespace-web + build/darwin/web/
-    build/darwin-amd64/filespace  + build/darwin-amd64/filespace-web + build/darwin-amd64/web/
+    build/linux/filespace         + build/linux/web/
+    build/windows/filespace.exe   + build/windows/web/
+    build/darwin/filespace        + build/darwin/web/
+    build/darwin-amd64/filespace  + build/darwin-amd64/web/
 
-两个独立程序：
+两个独立程序（前端即 Next.js 本身，无额外启动器程序）：
     filespace      后端：P2P + mDNS + 文件共享 API（纯 API，不托管界面）
-    filespace-web  前端：托管 web/ 界面；启动时读取后端锁文件获取端口，
-                   后端未启动时自动拉起一个后端，并把 /api 请求反向代理给它
-                   （运行入口：cd build/<平台>/ && ./filespace-web）
+    web/           前端：Next.js standalone 服务器（server.js + node_modules +
+                   .next/ + public/ + start.js）；node web/start.js 启动时读取后端
+                   锁文件获取端口，后端未启动则自动拉起一个，并把 /api 反代给后端
+                   （运行入口：cd build/<平台>/ && node web/start.js）
 
 安装包输出到 build/packages/<平台>/：
     build/packages/windows/FileSpace-<版本>.msi
@@ -42,6 +43,7 @@
 """
 
 import argparse
+import glob
 import os
 import re
 import shutil
@@ -57,7 +59,7 @@ WEB_DIR = os.path.join(ROOT, "web")           # 前端
 BACKEND_DIR = os.path.join(ROOT, "backend")   # 后端
 BUILD_DIR = os.path.join(ROOT, "build")       # 产物根目录
 PACKAGES_DIR = os.path.join(BUILD_DIR, "packages")  # 安装包根目录
-WEB_OUT = os.path.join(WEB_DIR, "out")        # pnpm build 的静态导出产物
+WEB_STANDALONE = os.path.join(WEB_DIR, ".next", "standalone")  # pnpm build 的 standalone 输出
 
 APP_NAME = "文件空间 FileSpace"
 APP_BINARY = "filespace"
@@ -131,7 +133,7 @@ def binary_name(platform):
 
 
 def web_binary_name(platform):
-    """目标平台的前端程序（filespace-web）可执行文件名。"""
+    """旧版前端程序（filespace-web）文件名，仅用于清理历史遗留产物。"""
     name = APP_BINARY + "-web"
     return name + ".exe" if platform.goos == "windows" else name
 
@@ -141,11 +143,11 @@ def web_binary_name(platform):
 # ============================================================
 
 def build_web():
-    """构建前端静态资源（平台无关，只构建一次）。"""
-    print("\n[前端] 构建静态资源 ...")
+    """构建前端 standalone 服务器（平台无关，只构建一次）。"""
+    print("\n[前端] 构建 standalone 服务器 ...")
     run(["pnpm", "build"], cwd=WEB_DIR)
-    if not os.path.isdir(WEB_OUT):
-        sys.exit("错误：前端构建未产出 %s，请检查 web/ 构建配置" % WEB_OUT)
+    if not os.path.isdir(WEB_STANDALONE):
+        sys.exit("错误：前端构建未产出 %s，请检查 web/ 构建配置" % WEB_STANDALONE)
 
 
 def go_build(platform, out_dir, binary, pkg):
@@ -169,23 +171,71 @@ def build_backend(platform, out_dir):
     go_build(platform, out_dir, os.path.join(out_dir, binary_name(platform)), "./cmd/filespace")
 
 
-def build_frontend(platform, out_dir):
-    """交叉编译前端程序（filespace-web：界面托管 + 后端自动拉起 + /api 反代）。"""
-    go_build(platform, out_dir, os.path.join(out_dir, web_binary_name(platform)), "./cmd/filespace-web")
+def patch_standalone_deps(web_target):
+    """补齐 pnpm 布局下 standalone trace 遗漏的 next 运行时依赖。
+
+    Next standalone 的 trace 基于 npm/yarn 扁平 node_modules；pnpm 使用符号链接
+    （node_modules/.pnpm/next@.../node_modules/ 内含 next 的全部可解析依赖），
+    导致 trace 只输出 next/react/react-dom 三个顶层包，运行时缺 @next/*、
+    @swc/helpers、styled-jsx 等模块。这里把 next 依赖上下文中的其余包
+    完整（跟随符号链接）补拷到 standalone/node_modules 顶层，与官方布局一致。
+    """
+    nm = os.path.join(web_target, "node_modules")
+    ctxs = glob.glob(os.path.join(WEB_DIR, "node_modules", ".pnpm", "next@*", "node_modules"))
+    if not ctxs:
+        return  # 非 pnpm 布局（npm / yarn）无需修补
+    ctx = ctxs[0]
+    for entry in sorted(os.listdir(ctx)):
+        if entry == "next":
+            continue  # next 自身已由 trace 输出
+        dst = os.path.join(nm, entry)
+        if os.path.lexists(dst):
+            continue
+        real = os.path.realpath(os.path.join(ctx, entry))
+        if os.path.isdir(real):
+            shutil.copytree(real, dst, symlinks=False)  # 跟随符号链接复制真实内容
+        else:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(real, dst)
 
 
-def build_one(platform):
-    """构建单个平台（假设前端 WEB_OUT 已存在）：拷贝 web + 交叉编译前后端程序。"""
-    plat_dir = os.path.join(BUILD_DIR, platform.name)
-    os.makedirs(plat_dir, exist_ok=True)
+def prepare_web_dist(plat_dir):
+    """组装前端分发目录 web/（Next.js standalone 服务器）。
 
+    结构：server.js + package.json + node_modules/ + .next/（server 与 static）+
+    public/ + start.js；运行入口：node web/start.js（读锁文件 / 自动拉起后端）。
+    """
     web_target = os.path.join(plat_dir, "web")
     if os.path.isdir(web_target):
         shutil.rmtree(web_target)
-    shutil.copytree(WEB_OUT, web_target)
+    os.makedirs(web_target)
 
+    # standalone 根内容（server.js、package.json、node_modules、.next/server 等）
+    shutil.copytree(WEB_STANDALONE, web_target, dirs_exist_ok=True)
+    # 客户端静态资源与公共资源
+    shutil.copytree(os.path.join(WEB_DIR, ".next", "static"),
+                    os.path.join(web_target, ".next", "static"), dirs_exist_ok=True)
+    if os.path.isdir(os.path.join(WEB_DIR, "public")):
+        shutil.copytree(os.path.join(WEB_DIR, "public"),
+                        os.path.join(web_target, "public"), dirs_exist_ok=True)
+    # 补齐 pnpm trace 遗漏的 next 运行时依赖
+    patch_standalone_deps(web_target)
+    # 前端启动器（读锁文件 / 拉起后端 / 启动 server.js）
+    shutil.copy2(os.path.join(WEB_DIR, "start.js"), os.path.join(web_target, "start.js"))
+
+
+def build_one(platform):
+    """构建单个平台（假设前端 standalone 已存在）：组装前端 + 交叉编译后端。"""
+    plat_dir = os.path.join(BUILD_DIR, platform.name)
+    os.makedirs(plat_dir, exist_ok=True)
+
+    prepare_web_dist(plat_dir)
     build_backend(platform, plat_dir)
-    build_frontend(platform, plat_dir)
+
+    # 清理历史遗留产物（旧版前端程序二进制）
+    legacy = os.path.join(plat_dir, web_binary_name(platform))
+    if os.path.isfile(legacy):
+        os.remove(legacy)
 
 
 def build_platforms(targets):
@@ -200,20 +250,19 @@ def build_platforms(targets):
     print("\n✅ 构建完成，产物目录：")
     for name in targets:
         p = PLATFORMS[name]
-        print("   build/%s/  （运行：cd build/%s && ./%s）" % (name, name, web_binary_name(p)))
+        print("   build/%s/  （运行：cd build/%s && node web/start.js）" % (name, name))
 
 
 def ensure_build(platform):
     """确保某平台构建产物存在（存在则复用，缺失则先构建）。"""
     plat_dir = os.path.join(BUILD_DIR, platform.name)
     binary = os.path.join(plat_dir, binary_name(platform))
-    web_binary = os.path.join(plat_dir, web_binary_name(platform))
-    web_dir = os.path.join(plat_dir, "web")
-    if os.path.isfile(binary) and os.path.isfile(web_binary) and os.path.isdir(web_dir):
+    web_server = os.path.join(plat_dir, "web", "server.js")
+    if os.path.isfile(binary) and os.path.isfile(web_server):
         print("   复用已有构建产物：build/%s/" % platform.name)
         return
     print("   构建产物缺失，先构建 %s ..." % platform.name)
-    if not os.path.isdir(WEB_OUT):
+    if not os.path.isdir(WEB_STANDALONE):
         build_web()
     build_one(platform)
 
@@ -231,6 +280,18 @@ def strip_copy(src, dst):
             run(["strip", "--strip-unneeded", dst], quiet=True)
         except subprocess.CalledProcessError:
             pass  # 无法 strip 时保留原始副本
+
+
+def write_web_entry(path, start_js):
+    """写 /usr/bin 下的前端入口脚本（执行 node <start.js>，保持用户工作目录）。"""
+    content = (
+        "#!/bin/sh\n"
+        "# 文件空间前端入口：启动 Next.js 前端（读后端锁文件，未启动则自动拉起）\n"
+        'exec node %s "$@"\n' % start_js
+    )
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.chmod(path, 0o755)
 
 
 def ensure_icon():
@@ -259,7 +320,7 @@ def write_desktop(path):
         "Type=Application\n"
         "Name=文件空间 FileSpace\n"
         "Comment=局域网文件共享工具（P2P + mDNS）\n"
-        "Exec=filespace\n"
+        "Exec=filespace-web\n"
         "Icon=filespace\n"
         "Terminal=true\n"
         "Categories=Network;FileTransfer;\n"
@@ -381,16 +442,12 @@ web_tree)s
           <Component Id="cmpEXE" Guid="*">
             <File Id="filEXE" KeyPath="yes" Source="$(var.SourceDir)/filespace.exe"/>
           </Component>
-          <Component Id="cmpWEBEXE" Guid="*">
-            <File Id="filWEBEXE" KeyPath="yes" Source="$(var.SourceDir)/filespace-web.exe"/>
-          </Component>
         </Directory>
       </Directory>
     </Directory>
     <Feature Id="Main" Title="%(name)s" Level="1">
 %(refs)s
       <ComponentRef Id="cmpEXE"/>
-      <ComponentRef Id="cmpWEBEXE"/>
     </Feature>
   </Product>
 </Wix>
@@ -443,13 +500,13 @@ def _deb_package(platform, version, deb_out, icon):
 
     source_plat_dir = os.path.join(BUILD_DIR, platform.name)
 
-    # 二进制（strip 副本）：后端 + 前端程序
+    # 后端二进制（strip 副本）+ 前端入口脚本
     usr_bin = os.path.join(staging, "usr", "bin")
     os.makedirs(usr_bin, exist_ok=True)
     strip_copy(os.path.join(source_plat_dir, "filespace"),
                os.path.join(usr_bin, "filespace"))
-    strip_copy(os.path.join(source_plat_dir, "filespace-web"),
-               os.path.join(usr_bin, "filespace-web"))
+    write_web_entry(os.path.join(usr_bin, "filespace-web"),
+                    "/usr/share/filespace/web/start.js")
 
     # web / 桌面入口 / 图标
     install_linux_files(os.path.join(staging, "usr", "share"), source_plat_dir, icon)
@@ -460,13 +517,13 @@ def _deb_package(platform, version, deb_out, icon):
         "Version: %s\n"
         "Architecture: amd64\n"
         "Maintainer: %s\n"
-        "Depends: libc6 (>= 2.34)\n"
+        "Depends: libc6 (>= 2.34), nodejs\n"
         "Section: net\n"
         "Priority: optional\n"
         "Homepage: %s\n"
         "Description: 局域网文件共享工具（P2P + mDNS）\n"
-        " 在任意文件夹下执行 filespace 即可共享该文件夹，打开浏览器即可查看\n"
-        " 局域网内所有已共享的文件夹。\n"
+        " 在任意文件夹下执行 filespace-web 即可共享该文件夹（自动拉起后端），\n"
+        " 打开浏览器即可查看局域网内所有已共享的文件夹。\n"
     ) % (version, MAINTAINER, APP_URL)
     debian = os.path.join(staging, "DEBIAN")
     os.makedirs(debian, exist_ok=True)
@@ -491,8 +548,8 @@ def _pacman_package(platform, version, out_dir, icon):
     os.makedirs(tar_root, exist_ok=True)
     strip_copy(os.path.join(source_plat_dir, "filespace"),
                os.path.join(tar_root, "filespace"))
-    strip_copy(os.path.join(source_plat_dir, "filespace-web"),
-               os.path.join(tar_root, "filespace-web"))
+    write_web_entry(os.path.join(tar_root, "filespace-web"),
+                    "/usr/share/filespace/web/start.js")
     web_target = os.path.join(tar_root, "web")
     shutil.copytree(os.path.join(source_plat_dir, "web"), web_target)
     write_desktop(os.path.join(tar_root, "filespace.desktop"))
@@ -510,7 +567,7 @@ pkgdesc="局域网文件共享工具（P2P + mDNS）"
 arch=('x86_64')
 url="%s"
 license=('custom')
-depends=('glibc')
+depends=('glibc' 'nodejs')
 source=("%s")
 sha256sums=('SKIP')
 
@@ -551,20 +608,18 @@ def _appimage(platform, version, appimage_out, icon):
 
     source_plat_dir = os.path.join(BUILD_DIR, platform.name)
 
-    # AppRun：不改变用户工作目录（共享的是调用方 cwd），启动前端程序
-    # filespace-web（它会自动拉起同目录下的 filespace 后端）
+    # AppRun：不改变用户工作目录（共享的是调用方 cwd），启动 Next.js 前端
+    #（web/start.js 会自动拉起同目录下的 filespace 后端；需系统安装 nodejs）
     apprun = os.path.join(appdir, "AppRun")
     with open(apprun, "w", encoding="utf-8") as f:
         f.write("#!/bin/sh\n"
                 "# 文件空间 AppImage 启动脚本：资源在 AppDir 内，保持用户当前工作目录\n"
                 'SELF="$(readlink -f "$0")"\n'
-                'exec "$(dirname "$SELF")/filespace-web" "$@"\n')
+                'exec node "$(dirname "$SELF")/web/start.js" "$@"\n')
     os.chmod(apprun, 0o755)
 
     strip_copy(os.path.join(source_plat_dir, "filespace"),
                os.path.join(appdir, "filespace"))
-    strip_copy(os.path.join(source_plat_dir, "filespace-web"),
-               os.path.join(appdir, "filespace-web"))
     shutil.copytree(os.path.join(source_plat_dir, "web"),
                     os.path.join(appdir, "web"))
     write_desktop(os.path.join(appdir, "filespace.desktop"))
@@ -648,9 +703,9 @@ def clean():
         if os.path.isdir(d):
             shutil.rmtree(d)
             print("   已删除 %s" % d)
-    if os.path.isdir(WEB_OUT):
-        shutil.rmtree(WEB_OUT)
-        print("   已删除 %s" % WEB_OUT)
+    if os.path.isdir(WEB_STANDALONE):
+        shutil.rmtree(WEB_STANDALONE)
+        print("   已删除 %s" % WEB_STANDALONE)
     if os.path.isdir(PACKAGES_DIR):
         shutil.rmtree(PACKAGES_DIR)
         print("   已删除 %s" % PACKAGES_DIR)

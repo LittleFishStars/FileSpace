@@ -9,7 +9,7 @@
 # 清理：      make clean
 #
 # 构建/打包逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/<平台>/：
-#   filespace（后端 API）+ filespace-web（前端程序，运行入口）+ web/ 静态资源
+#   filespace（后端 API）+ web/（Next.js standalone 前端，运行入口：node web/start.js）
 # 安装包输出到 build/packages/<平台>/。
 
 .PHONY: dev dev-web dev-backend build build-linux build-windows build-darwin build-darwin-amd64 pack pack-windows pack-linux clean
