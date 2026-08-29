@@ -62,7 +62,7 @@ export default function HostShell() {
 
     let content: React.ReactNode;
     if (error) {
-        content = <Alert type="error" showIcon message="加载失败" description={error}/>;
+        content = <Alert type="error" showIcon title="加载失败" description={error}/>;
     } else if (hosts === null) {
         content = (
             <div className="flex justify-center py-16">

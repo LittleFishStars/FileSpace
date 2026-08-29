@@ -166,7 +166,7 @@ function TextViewer({fileUrl}: {fileUrl: string}) {
     if (error) {
         return (
             <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                <Alert type="error" showIcon message="预览失败" description={error}/>
+                <Alert type="error" showIcon title="预览失败" description={error}/>
             </div>
         );
     }
