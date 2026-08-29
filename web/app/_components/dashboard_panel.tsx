@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import Link from 'next/link';
 import {ProCard} from '@ant-design/pro-components';
+import {useTheme} from './app_theme';
 import {formatSize} from '../_cards/folder_card';
 import {
   fetchFolders,
@@ -46,6 +47,7 @@ function BrandMark({className}: {className?: string}) {
 }
 
 export default function DashboardPanel() {
+    const {isDark, setMode} = useTheme();
     const [node, setNode] = useState<ApiNodeInfo | null>(null);
     const [localFolders, setLocalFolders] = useState<ApiFolderInfo[] | null>(null);
     const [peers, setPeers] = useState<ApiPeerInfo[] | null>(null);
@@ -99,7 +101,12 @@ export default function DashboardPanel() {
             <div className="flex flex-col gap-4">
                 {/* 品牌区：logo + 标题 + 软件版本（无边框） */}
                 <div className="flex flex-col items-center gap-4 pb-2">
-                    <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-blue-100 text-blue-600 dark:bg-blue-400/20 dark:text-blue-400">
+                    {/* 点击 logo 在当前亮/暗主题之间切换 */}
+                    <div
+                        className="flex h-28 w-28 cursor-pointer items-center justify-center rounded-3xl bg-blue-100 text-blue-600 transition-opacity hover:opacity-80 dark:bg-blue-400/20 dark:text-blue-400"
+                        title="点击切换亮暗主题"
+                        onClick={() => setMode(isDark ? 'light' : 'dark')}
+                    >
                         <BrandMark className="h-20 w-20"/>
                     </div>
                     <div className="text-center">

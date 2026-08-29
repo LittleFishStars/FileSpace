@@ -32,9 +32,21 @@ export interface BreadcrumbItem {
 }
 
 /** 品牌标志：互联网络标识，用 currentColor 随主题（浅/深）自适应 */
-function BrandMark() {
+function BrandMark({onClick}: {onClick?: () => void}) {
     return (
-        <svg viewBox="74 85 390 383" className="h-7 w-7" aria-hidden>
+        <svg
+            viewBox="74 85 390 383"
+            className="h-7 w-7 cursor-pointer"
+            role="img"
+            aria-label="文件空间 FileSpace"
+            onClick={(e) => {
+                // 仅响应 logo 图形本身的点击（切换主题），
+                // 不冒泡触发 ProLayout 的返回主页回调（标题文字点击仍返回主页）
+                e.stopPropagation();
+                onClick?.();
+            }}
+        >
+            <title>点击切换亮暗主题</title>
             <g stroke="currentColor" strokeWidth={14} strokeLinecap="round" fill="none">
                 <path d="M214.6 192.3 L358.3 244.9"/>
                 <path d="M181.1 225.6 L235.1 373.9"/>
@@ -89,9 +101,12 @@ export default function AppShell({
     children: React.ReactNode;
 }) {
     const mounted = useSyncExternalStore(subscribeNoop, getClientSnapshot, getServerSnapshot);
-    const {mode, setMode} = useTheme();
+    const {mode, isDark, setMode} = useTheme();
     const router = useRouter();
     const pathname = usePathname();
+
+    // 点击 logo：在当前亮/暗主题之间切换（基于实际显示取反，并固化为显式 light/dark 偏好）
+    const toggleTheme = () => setMode(isDark ? 'light' : 'dark');
 
     // 挂载前渲染占位，避免服务端渲染 ProLayout。
     if (!mounted) {
@@ -116,7 +131,7 @@ export default function AppShell({
     return (
         <ProLayout
             title="文件空间"
-            logo={<BrandMark/>}
+            logo={<BrandMark onClick={toggleTheme}/>}
             layout="top"
             route={TOP_MENU}
             location={{pathname: menuActivePath ?? pathname}}
