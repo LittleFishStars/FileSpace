@@ -77,6 +77,11 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
             <ConfigProvider
                 locale={zhCN}
                 theme={{
+                    // cssVar 模式：token 输出为 :root 上的 CSS 变量（--ant-*），组件样式引用变量。
+                    // 主题切换时仅更新同一变量节点的值，组件样式不重新生成，
+                    // 避免 cssinjs 样式节点按插入顺序排队导致旧主题样式被后插入的新主题样式覆盖
+                    // （症状：暗→亮正常，亮→暗时 antd 组件背景仍保持亮色）。
+                    cssVar: {},
                     algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
                     token: {
                         colorPrimary: '#4f7cd1',
