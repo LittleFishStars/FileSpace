@@ -1,7 +1,14 @@
 // filespace 命令行入口：在某个文件夹下执行即可共享该文件夹。
 package main
 
-// main 解析参数、加载配置、解析共享目录并启动服务。
+import (
+	"errors"
+	"log"
+
+	"filespace"
+)
+
+// main 解析参数、加载配置、获取运行锁（保持唯一后端）并启动服务。
 func main() {
 	opts, args := parseFlags()
 	if opts.showHelp || (len(args) > 0 && args[0] == "help") {
@@ -9,9 +16,27 @@ func main() {
 		return
 	}
 	cfg := loadConfig(opts)
-	if maybeHandoffToExisting(cfg, opts, args) {
+
+	// 运行锁：用锁文件标识是否已有后端在运行（含运行在其他端口的实例）
+	lock, existing, err := filespace.AcquireRunningLock(cfg.ListenPort)
+	if err != nil {
+		log.Fatalf("获取运行锁失败: %v", err)
+	}
+	if existing > 0 {
+		handoffToExisting(existing, opts, args)
 		return
 	}
+	defer lock.Release()
+
+	// 兜底：锁文件缺失但同端口已有后端（如锁文件被误删）
+	if err := probeBackend(cfg.ListenPort); err != nil {
+		if errors.Is(err, filespace.ErrBackendRunning) {
+			handoffToExisting(cfg.ListenPort, opts, args)
+			return
+		}
+		log.Fatalf("端口 %d 不可用: %v", cfg.ListenPort, err)
+	}
+
 	resolveSharedFolders(cfg, opts, args)
 	runServer(cfg)
 }
