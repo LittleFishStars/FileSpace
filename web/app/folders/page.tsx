@@ -302,7 +302,7 @@ function FolderBrowser() {
         folder && (hostname || isLocal)
             ? isLocal
                 ? [
-                      {title: '本机管理', href: '/local'},
+                      {title: '本机节点', href: '/local'},
                       {title: folder.name},
                   ]
                 : [
@@ -317,6 +317,7 @@ function FolderBrowser() {
             wide
             title="文件夹"
             breadcrumb={pageBreadcrumb}
+            topTabsActiveKey={isLocal ? 'local' : 'lan'}
         >
             <div className="mb-4 flex items-center justify-between">
                 <Breadcrumb items={breadcrumbItems}/>

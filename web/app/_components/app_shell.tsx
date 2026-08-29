@@ -4,7 +4,7 @@ import React, {useSyncExternalStore} from 'react';
 import {Breadcrumb, Segmented} from 'antd';
 import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
 import Link from 'next/link';
-import {useRouter} from 'next/navigation';
+import {usePathname, useRouter} from 'next/navigation';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
 import {useTheme, type ThemeMode} from './app_theme';
 
@@ -31,12 +31,6 @@ export interface BreadcrumbItem {
     href?: string;
 }
 
-/** 顶栏选项卡：渲染在标题与主题切换按钮所在的那一行 */
-export interface TopTabItem {
-    key: string;
-    label: React.ReactNode;
-}
-
 /** 品牌标志：互联网络标识，用 currentColor 随主题（浅/深）自适应 */
 function BrandMark() {
     return (
@@ -61,8 +55,21 @@ const THEME_OPTIONS = [
     {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
 ];
 
+/** 全局导航选项卡：局域网节点（/）与 本机节点（/local），所有页面顶栏可见 */
+const TOP_TAB_ITEMS = [
+    {label: '局域网节点', value: 'lan'},
+    {label: '本机节点', value: 'local'},
+];
+
+/** 由路由推断选项卡选中态：/ → 局域网节点，/local → 本机节点，其他页面不选中（可由页面覆盖） */
+function tabKeyByPathname(pathname: string): string {
+    if (pathname === '/local') return 'local';
+    if (pathname === '/') return 'lan';
+    return '';
+}
+
 /**
- * 应用外壳：ProLayout 顶部导航 + 右上角主题切换 + 页面容器。
+ * 应用外壳：ProLayout 顶部导航 + 全局选项卡（局域网节点 / 本机节点）+ 右上角主题切换 + 页面容器。
  * 各页面共用；标题可为纯文本（title），也可为面包屑形式（breadcrumb，
  * 形如「主机列表 > 主机名 > 文件夹」，此时 title 作为加载中的回退标题）。
  */
@@ -70,7 +77,7 @@ export default function AppShell({
     title,
     breadcrumb,
     wide = false,
-    topTabs,
+    topTabsActiveKey,
     children,
 }: {
     /** 页面标题（未提供 breadcrumb 或 breadcrumb 为空时的回退标题） */
@@ -79,22 +86,22 @@ export default function AppShell({
     breadcrumb?: BreadcrumbItem[];
     /** 内容区是否放宽（文件浏览等表格页用），默认窄栏 */
     wide?: boolean;
-    /** 顶栏选项卡（可选）：渲染在标题 / 主题切换按钮那一行，切换由页面自身控制 */
-    topTabs?: {
-        items: TopTabItem[];
-        activeKey: string;
-        onChange: (key: string) => void;
-    };
+    /** 覆盖选项卡选中态（如 /folders 页按文件夹归属标记本机 / 远程）；缺省由路由推断 */
+    topTabsActiveKey?: string;
     children: React.ReactNode;
 }) {
     const mounted = useSyncExternalStore(subscribeNoop, getClientSnapshot, getServerSnapshot);
     const {mode, setMode} = useTheme();
     const router = useRouter();
+    const pathname = usePathname();
 
     // 挂载前渲染占位，避免服务端渲染 ProLayout。
     if (!mounted) {
         return <div className="min-h-screen"/>;
     }
+
+    // 选项卡选中态：页面显式覆盖优先，否则按路由推断
+    const activeTab = topTabsActiveKey ?? tabKeyByPathname(pathname);
 
     // 有面包屑时标题位置渲染为面包屑，否则回退为纯文本标题。
     const header =
@@ -111,24 +118,22 @@ export default function AppShell({
               }
             : {title};
 
-    // 顶栏左侧：logo + 标题文字（+ 可选选项卡）组合为一个节点，
-    // 点击返回主页（ProLayout 的 title 仅接受字符串，故用 logo 承载组合内容并关闭默认标题）。
+    // 顶栏左侧：logo + 标题文字 + 全局选项卡组合为一个节点，
+    // 点击 logo / 标题返回主页（ProLayout 的 title 仅接受字符串，故用 logo 承载组合内容并关闭默认标题）。
     // 选项卡点击需阻止冒泡，避免触发返回主页的跳转。
     const titleNode = false;
     const logoNode = (
         <span className="flex cursor-pointer items-center gap-3" onClick={() => router.push('/')}>
             <BrandMark/>
             <span className="text-base font-semibold text-neutral-900 dark:text-neutral-100">文件空间</span>
-            {topTabs && (
-                <span onClick={(e) => e.stopPropagation()}>
-                    <Segmented
-                        size="middle"
-                        value={topTabs.activeKey}
-                        onChange={(value) => topTabs.onChange(value as string)}
-                        options={topTabs.items.map((item) => ({label: item.label, value: item.key}))}
-                    />
-                </span>
-            )}
+            <span onClick={(e) => e.stopPropagation()}>
+                <Segmented
+                    size="middle"
+                    value={activeTab}
+                    onChange={(value) => router.push(value === 'local' ? '/local' : '/')}
+                    options={TOP_TAB_ITEMS}
+                />
+            </span>
         </span>
     );
 

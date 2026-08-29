@@ -4,7 +4,6 @@ import React, {useEffect, useState} from 'react';
 import {Alert, Empty, Spin} from 'antd';
 import AppShell from './app_shell';
 import HostCard, {type HostInfo} from '../_cards/host_card';
-import LocalPanel from './local_panel';
 import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo} from '../_lib/api';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
@@ -28,13 +27,10 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
 }
 
 /**
- * 主页：顶栏两个选项卡（标题与主题切换按钮所在的那一行）。
- * - 局域网节点：mDNS 发现的其他节点（本机节点不在此列出）
- * - 本机节点：本机节点信息 + 共享文件夹管理（添加 / 删除），与 /local 页内容一致
+ * 局域网节点页（/）：展示 mDNS 发现的其他节点（本机节点不在此列出，
+ * 本机节点通过顶栏选项卡切到 /local 管理）。
  */
 export default function HostShell() {
-    // 当前选项卡：lan=局域网节点（默认），local=本机节点
-    const [tab, setTab] = useState<'lan' | 'local'>('lan');
     const [hosts, setHosts] = useState<HostInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -66,20 +62,19 @@ export default function HostShell() {
         };
     }, []);
 
-    /** 局域网节点视图内容 */
-    let lanContent: React.ReactNode;
+    let content: React.ReactNode;
     if (error) {
-        lanContent = <Alert type="error" showIcon title="加载失败" description={error}/>;
+        content = <Alert type="error" showIcon title="加载失败" description={error}/>;
     } else if (hosts === null) {
-        lanContent = (
+        content = (
             <div className="flex justify-center py-16">
                 <Spin size="large"/>
             </div>
         );
     } else if (hosts.length === 0) {
-        lanContent = <Empty description="暂无其他节点"/>;
+        content = <Empty description="暂无其他节点"/>;
     } else {
-        lanContent = (
+        content = (
             <div className="flex flex-col gap-4">
                 {hosts.map((host) => (
                     <HostCard key={host.id} host={host}/>
@@ -89,19 +84,8 @@ export default function HostShell() {
     }
 
     return (
-        <AppShell
-            wide
-            title={tab === 'lan' ? '局域网节点' : '本机节点'}
-            topTabs={{
-                items: [
-                    {key: 'lan', label: '局域网节点'},
-                    {key: 'local', label: '本机节点'},
-                ],
-                activeKey: tab,
-                onChange: (key) => setTab(key as 'lan' | 'local'),
-            }}
-        >
-            {tab === 'lan' ? lanContent : <LocalPanel/>}
+        <AppShell wide title="局域网节点">
+            {content}
         </AppShell>
     );
 }
