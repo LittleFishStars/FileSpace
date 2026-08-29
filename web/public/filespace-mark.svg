@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="74 85 390 383" role="img" aria-label="文件空间 FileSpace">
+  <!-- 应用内 logo 标志：主题自适应（stroke 用 currentColor） -->
+  <g stroke="currentColor" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M214.6 192.3 L358.3 244.9"/>
+    <path d="M181.1 225.6 L235.1 373.9"/>
+    <path d="M366.9 284.7 L268.8 381.5"/>
+    <circle cx="394" cy="258" r="38"/>
+    <circle cx="246" cy="404" r="32"/>
+    <circle cx="162" cy="173" r="56"/>
+    <circle cx="162" cy="173" r="19" stroke-width="9"/>
+  </g>
+</svg>

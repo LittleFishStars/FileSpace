@@ -1,5 +1,7 @@
 # 文件空间 FileSpace
 
+![文件空间](web/public/filespace-icon.svg)
+
 局域网文件共享工具：在任意文件夹下执行前端程序即可共享该文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
 
 前后端是两个独立程序：**filespace**（后端，Go，P2P + mDNS + 文件共享 API）与 **前端**（Next.js standalone 服务器，即前端本身，无额外启动器程序）。

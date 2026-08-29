@@ -30,6 +30,23 @@ export interface BreadcrumbItem {
     href?: string;
 }
 
+/** 品牌标志：互联网络标识，用 currentColor 随主题（浅/深）自适应 */
+function BrandMark() {
+    return (
+        <svg viewBox="74 85 390 383" className="h-7 w-7" aria-hidden>
+            <g stroke="currentColor" strokeWidth={14} strokeLinecap="round" fill="none">
+                <path d="M214.6 192.3 L358.3 244.9"/>
+                <path d="M181.1 225.6 L235.1 373.9"/>
+                <path d="M366.9 284.7 L268.8 381.5"/>
+                <circle cx="394" cy="258" r="38"/>
+                <circle cx="246" cy="404" r="32"/>
+                <circle cx="162" cy="173" r="56"/>
+                <circle cx="162" cy="173" r="19" strokeWidth={9}/>
+            </g>
+        </svg>
+    );
+}
+
 /**
  * 应用外壳：ProLayout 顶部导航 + 右上角主题切换 + 页面容器。
  * 各页面共用；标题可为纯文本（title），也可为面包屑形式（breadcrumb，
@@ -81,7 +98,7 @@ export default function AppShell({
     return (
         <ProLayout
             title={'文件空间'}
-            logo={undefined}
+            logo={<BrandMark/>}
             layout={'top'}
             actionsRender={() => [
                 <Segmented

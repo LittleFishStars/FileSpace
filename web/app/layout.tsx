@@ -16,6 +16,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "文件空间 | FileSpace",
   description: "局域网文件共享",
+  applicationName: "文件空间",
+  appleWebApp: {
+    title: "文件空间",
+    capable: true,
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
