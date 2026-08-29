@@ -9,10 +9,10 @@
 # 清理：      make clean
 #
 # 构建/打包逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/ 下：
-#   build/backend/<平台>/     后端（filespace，含嵌入的前端静态资源）
+#   build/<平台>/               后端（filespace，含嵌入的前端静态资源）
 # 运行：
-#   build/backend/<平台>/filespace            # 只启动后端 API
-#   build/backend/<平台>/filespace --web      # 启动后端 + 前端界面，并在浏览器中打开
+#   build/<平台>/filespace            # 只启动后端 API
+#   build/<平台>/filespace --web      # 启动后端 + 前端界面，并在浏览器中打开
 # 安装包输出到 build/packages/<平台>/。
 
 .PHONY: dev dev-web dev-backend build build-linux build-windows build-darwin build-darwin-amd64 pack pack-windows pack-linux clean

@@ -21,7 +21,7 @@
             在浏览器中打开界面。
 
 产物输出到 build/ 下，后端按平台分目录：
-    build/backend/<平台>/     后端（filespace，含嵌入的前端静态资源）
+    build/<平台>/     后端（filespace，含嵌入的前端静态资源）
 
 构建流程：
     1. pnpm build（output: 'export' → web/out/）
@@ -170,8 +170,8 @@ def go_build(platform, out_dir, binary, pkg):
 
 
 def build_backend(platform):
-    """交叉编译后端程序（filespace：API + 嵌入的前端静态资源）到 build/backend/<平台>/。"""
-    out_dir = os.path.join(BUILD_DIR, "backend", platform.name)
+    """交叉编译后端程序（filespace：API + 嵌入的前端静态资源）到 build/<平台>/。"""
+    out_dir = os.path.join(BUILD_DIR, platform.name)
     os.makedirs(out_dir, exist_ok=True)
     go_build(platform, out_dir, os.path.join(out_dir, binary_name(platform)), "./cmd/filespace")
 
@@ -184,26 +184,26 @@ def build_platforms(targets):
         p = PLATFORMS[name]
         print("\n[%s] %s" % (p.name, p.description))
         build_backend(p)
-        print("   ✅ %s" % os.path.join(BUILD_DIR, "backend", p.name, binary_name(p)))
+        print("   ✅ %s" % os.path.join(BUILD_DIR, p.name, binary_name(p)))
 
     print("\n✅ 构建完成，产物目录：")
     for name in targets:
         p = PLATFORMS[name]
-        print("   build/backend/%s/  （filespace 后端，含嵌入的前端静态资源）" % name)
+        print("   build/%s/  （filespace 后端，含嵌入的前端静态资源）" % name)
     print("\n运行：")
     for name in targets:
         p = PLATFORMS[name]
-        exe = os.path.join(BUILD_DIR, "backend", p.name, binary_name(p))
+        exe = os.path.join(BUILD_DIR, p.name, binary_name(p))
         print("   %s            # 只启动后端 API" % exe)
         print("   %s --web      # 启动后端 + 前端界面，并在浏览器中打开" % exe)
 
 
 def ensure_build(platform):
     """确保某平台构建产物存在（存在则复用，缺失则先构建）。"""
-    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
-    binary = os.path.join(backend_dir, binary_name(platform))
+    platform_dir = os.path.join(BUILD_DIR, platform.name)
+    binary = os.path.join(platform_dir, binary_name(platform))
     if os.path.isfile(binary):
-        print("   复用已有构建产物：build/backend/%s/" % platform.name)
+        print("   复用已有构建产物：build/%s/" % platform.name)
         return
     print("   构建产物缺失，先构建 %s ..." % platform.name)
     if not os.path.isdir(WEB_EXPORT):
@@ -309,15 +309,15 @@ def _msi_installer(platform, version, msi_out):
     """用 msitools（wixl-heat + wixl）生成 Windows .msi。"""
     require_tool("wixl")
     require_tool("wixl-heat")
-    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
-    exe_path = os.path.join(backend_dir, binary_name(platform))
+    platform_dir = os.path.join(BUILD_DIR, platform.name)
+    exe_path = os.path.join(platform_dir, binary_name(platform))
     work = os.path.join(PACKAGES_DIR, "windows")
     os.makedirs(work, exist_ok=True)
 
     # 1) 收集后端二进制文件，交给 wixl-heat 生成目录树片段
     files = [exe_path]
     proc = subprocess.run(
-        ["wixl-heat", "-p", backend_dir, "--component-group", "Files",
+        ["wixl-heat", "-p", platform_dir, "--component-group", "Files",
          "--directory-ref", "INSTALLFOLDER"],
         input="\n".join(files) + "\n", text=True, capture_output=True)
     if proc.returncode != 0:
@@ -363,7 +363,7 @@ def _msi_installer(platform, version, msi_out):
        "upgrade_code": upgrade_code, "exe_tree": exe_tree, "refs": refs})
 
     # 4) wixl 编译生成 .msi
-    run(["wixl", "-o", os.path.abspath(msi_out), "-D", "SourceDir=" + backend_dir, wxs])
+    run(["wixl", "-o", os.path.abspath(msi_out), "-D", "SourceDir=" + platform_dir, wxs])
 
 
 # ============================================================
@@ -406,12 +406,12 @@ def _deb_package(platform, version, deb_out, icon):
     if os.path.isdir(staging):
         shutil.rmtree(staging)
 
-    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
+    platform_dir = os.path.join(BUILD_DIR, platform.name)
 
     # 后端二进制（strip 副本）
     usr_bin = os.path.join(staging, "usr", "bin")
     os.makedirs(usr_bin, exist_ok=True)
-    strip_copy(os.path.join(backend_dir, binary_name(platform)),
+    strip_copy(os.path.join(platform_dir, binary_name(platform)),
                os.path.join(usr_bin, binary_name(platform)))
 
     # 桌面入口 + 图标
@@ -455,12 +455,12 @@ def _pacman_package(platform, version, out_dir, icon):
         shutil.rmtree(work)
     os.makedirs(work)
 
-    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
+    platform_dir = os.path.join(BUILD_DIR, platform.name)
 
     # 组装 source 归档（strip 二进制 + 桌面入口 + 图标）
     tar_root = os.path.join(work, "tar-root")
     os.makedirs(tar_root, exist_ok=True)
-    strip_copy(os.path.join(backend_dir, binary_name(platform)),
+    strip_copy(os.path.join(platform_dir, binary_name(platform)),
                os.path.join(tar_root, binary_name(platform)))
     write_desktop(os.path.join(tar_root, "filespace.desktop"))
     if icon:
@@ -513,7 +513,7 @@ def _appimage(platform, version, appimage_out, icon):
         shutil.rmtree(appdir)
     os.makedirs(appdir)
 
-    backend_dir = os.path.join(BUILD_DIR, "backend", platform.name)
+    platform_dir = os.path.join(BUILD_DIR, platform.name)
 
     # AppRun：启动 filespace --web（保持用户当前工作目录）
     apprun = os.path.join(appdir, "AppRun")
@@ -524,7 +524,7 @@ def _appimage(platform, version, appimage_out, icon):
                 'exec "$(dirname "$SELF")/filespace" --web "$@"\n')
     os.chmod(apprun, 0o755)
 
-    strip_copy(os.path.join(backend_dir, binary_name(platform)),
+    strip_copy(os.path.join(platform_dir, binary_name(platform)),
                os.path.join(appdir, binary_name(platform)))
     write_desktop(os.path.join(appdir, "filespace.desktop"))
     if icon:
@@ -602,16 +602,21 @@ def do_pack(targets):
 def clean():
     """清理构建产物与安装包，保留 build/ 下的 Go 构建缓存。"""
     print("==> 清理构建产物 ...")
-    backend_dir = os.path.join(BUILD_DIR, "backend")
-    if os.path.isdir(backend_dir):
-        shutil.rmtree(backend_dir)
-        print("   已删除 %s" % backend_dir)
-    # 旧版布局（build/<平台>/）清理
     for name in PLATFORMS:
         d = os.path.join(BUILD_DIR, name)
         if os.path.isdir(d):
             shutil.rmtree(d)
             print("   已删除 %s" % d)
+    # 旧版布局（build/backend/<平台>/）清理
+    backend_dir = os.path.join(BUILD_DIR, "backend")
+    if os.path.isdir(backend_dir):
+        shutil.rmtree(backend_dir)
+        print("   已删除 %s" % backend_dir)
+    # 旧版布局（build/web/，前后端分离时代的 standalone 前端）清理
+    web_dir = os.path.join(BUILD_DIR, "web")
+    if os.path.isdir(web_dir):
+        shutil.rmtree(web_dir)
+        print("   已删除 %s" % web_dir)
     if os.path.isdir(WEB_EXPORT):
         shutil.rmtree(WEB_EXPORT)
         print("   已删除 %s" % WEB_EXPORT)

@@ -9,7 +9,7 @@
 - `web/`     — 前端（Next.js 16 App Router + antd + Tailwind v4）：`next.config.ts` 配置 `output: 'export'`（生产）与 `rewrites`（开发模式反代 /api）
 - `backend/` — 后端（Go，P2P + mDNS）：`cmd/filespace`（API + `--web` 模式静态文件托管）
 - `scripts/` — 构建脚本（`build.py`）与开发启动脚本（`dev.py`），Python
-- `build/`   — 构建产物（gitignored）：`build/backend/<平台>/`（后端，含嵌入的前端静态资源）
+- `build/`   — 构建产物（gitignored）：`build/<平台>/`（后端，含嵌入的前端静态资源）
 
 ## 常用命令
 
@@ -49,7 +49,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定：`backend/version.go` 当前为 `0.1.19`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
+- 版本号约定：`backend/version.go` 当前为 `0.1.20`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

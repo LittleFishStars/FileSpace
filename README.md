@@ -51,8 +51,8 @@
 │   │   ├── share/        # 共享目录扫描 / 索引
 │   │   └── state/        # 本地状态（上次共享记录、运行锁）
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.1.19）
-└── build/                # 构建产物（gitignored）：build/backend/<平台>/（后端，含嵌入的前端静态资源）
+│   └── version.go        # 版本号（当前 0.1.20）
+└── build/                # 构建产物（gitignored）：build/<平台>/（后端，含嵌入的前端静态资源）
 ```
 
 ## 💻 支持平台
@@ -95,10 +95,10 @@ python3 scripts/build.py --clean      # 清理构建产物
 
 ```bash
 # 只启动后端 API
-./build/backend/linux/filespace
+./build/linux/filespace
 
 # 启动后端 + 前端界面，并在浏览器中打开
-./build/backend/linux/filespace --web
+./build/linux/filespace --web
 ```
 
 ### 打包安装包
