@@ -109,23 +109,31 @@ export default function AppShell({
               }
             : {title};
 
+    // 顶栏左侧：有 topTabs 时把 logo + 标题文字 + 选项卡组合为一个节点
+    // （ProLayout 的 title 仅接受字符串，故用 logo 承载组合内容并关闭默认标题）；
+    // 无 topTabs 时保持默认（logo 图标 + 标题文字）。
+    const titleNode = topTabs ? false : '文件空间';
+    const logoNode = topTabs ? (
+        <span className="flex items-center gap-3">
+            <BrandMark/>
+            <span className="text-base font-semibold text-neutral-900 dark:text-neutral-100">文件空间</span>
+            <Segmented
+                size="middle"
+                value={topTabs.activeKey}
+                onChange={(value) => topTabs.onChange(value as string)}
+                options={topTabs.items.map((item) => ({label: item.label, value: item.key}))}
+            />
+        </span>
+    ) : (
+        <BrandMark/>
+    );
+
     return (
         <ProLayout
-            title={'文件空间'}
-            logo={<BrandMark/>}
+            title={titleNode}
+            logo={logoNode}
             layout={'top'}
             actionsRender={() => [
-                // 顶栏选项卡（可选）：在主题切换左侧
-                topTabs && (
-                    <Segmented
-                        key="top-tabs"
-                        size="middle"
-                        style={{marginRight: 16}}
-                        value={topTabs.activeKey}
-                        onChange={(value) => topTabs.onChange(value as string)}
-                        options={topTabs.items.map((item) => ({label: item.label, value: item.key}))}
-                    />
-                ),
                 <Segmented
                     key="theme-toggle"
                     size="middle"
