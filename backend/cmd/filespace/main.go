@@ -53,6 +53,7 @@ func usage() {
 
 参数:
   [目录...]               要共享的文件夹（可多个）；缺省恢复上次退出前共享的目录，无记录时共享当前目录
+  -a, --add               直接共享当前文件夹（不恢复上次共享的目录）
   -c, --config <文件>     配置文件路径（YAML）
   -p, --port <端口>       监听端口（默认 8080）
   -h, --help              显示本帮助信息
@@ -62,11 +63,12 @@ func usage() {
 
 示例:
   filespace                        恢复上次共享的目录（无记录时共享当前目录）
+  filespace -a                     直接共享当前目录
   filespace ~/docs /mnt/data       共享多个目录
   filespace -p 9000 ~/docs         指定端口
   filespace -c config.yaml         使用配置文件
 
-配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录。
+配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可改为直接共享当前目录。
 `)
 }
 
@@ -82,6 +84,9 @@ func main() {
 	flag.IntVar(&port, "p", 0, "监听端口（-p, --port 简写）")
 	flag.BoolVar(&showHelp, "help", false, "显示帮助信息")
 	flag.BoolVar(&showHelp, "h", false, "显示帮助信息（-h, --help 简写）")
+	var addCwd bool
+	flag.BoolVar(&addCwd, "add", false, "直接共享当前文件夹")
+	flag.BoolVar(&addCwd, "a", false, "直接共享当前文件夹（-a, --add 简写）")
 	flag.Parse()
 	args := flag.Args()
 
@@ -103,6 +108,16 @@ func main() {
 	if port != 0 {
 		cfg.ListenPort = port
 	}
+	// 共享目录解析：目录参数 > 配置文件 shared_folders > 上次共享记录 > 当前目录；
+	// -a/--add 表示直接共享当前目录，与目录参数 / 配置中的 shared_folders 互斥
+	if addCwd {
+		if len(args) > 0 {
+			log.Fatalf("不能同时使用 -a/--add 与目录参数")
+		}
+		if len(cfg.Shared) > 0 {
+			log.Fatalf("不能同时使用 -a/--add 与配置文件中的 shared_folders")
+		}
+	}
 	if len(args) > 0 {
 		cfg.Shared = make([]filespace.SharedFolder, 0, len(args))
 		for _, p := range args {
@@ -110,8 +125,13 @@ func main() {
 		}
 	}
 	if len(cfg.Shared) == 0 {
-		// 未指定共享目录：优先恢复上次退出前共享的目录，无记录时回退到当前目录
-		if last := filespace.LoadLastShared(); len(last) > 0 {
+		if addCwd {
+			// -a：直接共享当前目录，不恢复上次共享的目录
+			cwd, _ := os.Getwd()
+			cfg.Shared = []filespace.SharedFolder{{Path: cwd, Name: filepath.Base(cwd)}}
+			fmt.Printf("已指定 -a，直接共享当前目录: %s\n", cwd)
+		} else if last := filespace.LoadLastShared(); len(last) > 0 {
+			// 未指定共享目录：优先恢复上次退出前共享的目录
 			cfg.Shared = make([]filespace.SharedFolder, 0, len(last))
 			for _, p := range last {
 				cfg.Shared = append(cfg.Shared, filespace.SharedFolder{Path: p, Name: filepath.Base(p)})
