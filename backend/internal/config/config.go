@@ -1,4 +1,5 @@
-package filespace
+// Package config 定义后端配置结构与加载逻辑。
+package config
 
 import (
 	"crypto/sha1"

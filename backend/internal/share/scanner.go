@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"filespace"
+	"filespace/internal/config"
 	"filespace/internal/model"
 )
 
@@ -42,7 +42,7 @@ type Manager struct {
 }
 
 // NewManager 根据配置创建共享目录管理器，为每个目录生成稳定 ID。
-func NewManager(shared []filespace.SharedFolder) *Manager {
+func NewManager(shared []config.SharedFolder) *Manager {
 	folders := make([]Folder, 0, len(shared))
 	for _, sf := range shared {
 		name := sf.Name

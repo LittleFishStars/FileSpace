@@ -1,4 +1,4 @@
-package filespace
+package state
 
 import (
 	"encoding/json"
@@ -27,7 +27,7 @@ type RunningLock struct {
 //   - 锁文件存在但端口无响应（崩溃残留）→ 删除残留锁文件后重建
 //   - 无锁文件 → 创建并持有（退出时调用 Release 删除）
 func AcquireRunningLock(port int) (*RunningLock, int, error) {
-	dir, err := stateDir()
+	dir, err := dir()
 	if err != nil {
 		return nil, 0, err
 	}

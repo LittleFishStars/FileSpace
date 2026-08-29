@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"filespace"
+	"filespace/internal/state"
 )
 
 // handoffToExisting 已有后端在运行（运行锁被持有）：仅允许用目录参数或 -a 追加，
@@ -38,7 +38,7 @@ func appendPaths(args []string, addCwd bool) []string {
 }
 
 // probeBackend 探测端口上是否已有 filespace 后端在运行：
-//   - 返回 filespace.ErrBackendRunning：端口上是 filespace 后端
+//   - 返回 state.ErrBackendRunning：端口上是 filespace 后端
 //   - 返回其他错误：端口被占用但并非 filespace
 //   - 返回 nil：端口空闲
 func probeBackend(port int) error {
@@ -57,7 +57,7 @@ func probeBackend(port int) error {
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.ID == "" {
 		return fmt.Errorf("端口 %d 上的服务响应不符合 filespace 格式", port)
 	}
-	return filespace.ErrBackendRunning
+	return state.ErrBackendRunning
 }
 
 // sendAddFolders 把要追加的目录列表发给已运行的后端。

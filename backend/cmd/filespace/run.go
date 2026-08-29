@@ -14,14 +14,16 @@ import (
 
 	"filespace"
 	"filespace/internal/api"
+	"filespace/internal/config"
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
+	"filespace/internal/state"
 )
 
 // app 一次运行的组件集合。
 type app struct {
-	cfg     *filespace.Config
+	cfg     *config.Config
 	webRoot string
 	nodeID  string
 	mon     *monitor.Monitor
@@ -32,7 +34,7 @@ type app struct {
 }
 
 // runServer 启动 HTTP 服务与 mDNS 发现，等待退出信号后优雅关闭。
-func runServer(cfg *filespace.Config) {
+func runServer(cfg *config.Config) {
 	a := &app{cfg: cfg, webRoot: webRoot()}
 	a.build()
 	a.startHTTP()
@@ -43,7 +45,7 @@ func runServer(cfg *filespace.Config) {
 // build 组装各组件（监控、共享管理器、发现缓存、HTTP 服务）。
 func (a *app) build() {
 	a.mon = monitor.New()
-	a.nodeID = filespace.NodeID(a.mon.Hostname())
+	a.nodeID = config.NodeID(a.mon.Hostname())
 	a.folders = share.NewManager(a.cfg.Shared)
 	a.peers = discovery.NewCache(a.nodeID)
 	srv := api.NewServer(api.Options{
@@ -108,7 +110,7 @@ func saveLastShared(folders *share.Manager) {
 	for _, f := range infos {
 		paths = append(paths, f.Path)
 	}
-	if err := filespace.SaveLastShared(paths); err != nil {
+	if err := state.SaveLastShared(paths); err != nil {
 		log.Printf("记录共享目录失败: %v", err)
 		return
 	}

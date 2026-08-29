@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	"filespace"
+	"filespace/internal/state"
 )
 
 // main 解析参数、加载配置、获取运行锁（保持唯一后端）并启动服务。
@@ -18,7 +18,7 @@ func main() {
 	cfg := loadConfig(opts)
 
 	// 运行锁：用锁文件标识是否已有后端在运行（含运行在其他端口的实例）
-	lock, existing, err := filespace.AcquireRunningLock(cfg.ListenPort)
+	lock, existing, err := state.AcquireRunningLock(cfg.ListenPort)
 	if err != nil {
 		log.Fatalf("获取运行锁失败: %v", err)
 	}
@@ -30,7 +30,7 @@ func main() {
 
 	// 兜底：锁文件缺失但同端口已有后端（如锁文件被误删）
 	if err := probeBackend(cfg.ListenPort); err != nil {
-		if errors.Is(err, filespace.ErrBackendRunning) {
+		if errors.Is(err, state.ErrBackendRunning) {
 			handoffToExisting(cfg.ListenPort, opts, args)
 			return
 		}

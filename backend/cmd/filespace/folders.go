@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"filespace"
+	"filespace/internal/config"
+	"filespace/internal/state"
 )
 
 // resolveSharedFolders 解析最终共享目录列表，优先级：
 // 目录参数 > 配置文件 shared_folders > 上次共享记录 > 当前目录；
 // --this 仅共享当前目录（跳过恢复），-a 在结果上额外追加当前目录。
-func resolveSharedFolders(cfg *filespace.Config, opts *options, args []string) {
+func resolveSharedFolders(cfg *config.Config, opts *options, args []string) {
 	if opts.thisOnly {
 		useThisOnly(cfg, args)
 	}
@@ -29,7 +30,7 @@ func resolveSharedFolders(cfg *filespace.Config, opts *options, args []string) {
 }
 
 // useThisOnly 处理 --this：仅共享当前目录，与目录参数 / 配置文件中的 shared_folders 互斥。
-func useThisOnly(cfg *filespace.Config, args []string) {
+func useThisOnly(cfg *config.Config, args []string) {
 	if len(args) > 0 {
 		log.Fatalf("不能同时使用 --this 与目录参数")
 	}
@@ -42,17 +43,17 @@ func useThisOnly(cfg *filespace.Config, args []string) {
 }
 
 // sharedFromPaths 由路径列表构造共享目录配置（名称取路径基名）。
-func sharedFromPaths(paths []string) []filespace.SharedFolder {
-	shared := make([]filespace.SharedFolder, 0, len(paths))
+func sharedFromPaths(paths []string) []config.SharedFolder {
+	shared := make([]config.SharedFolder, 0, len(paths))
 	for _, p := range paths {
-		shared = append(shared, filespace.SharedFolder{Path: p, Name: filepath.Base(p)})
+		shared = append(shared, config.SharedFolder{Path: p, Name: filepath.Base(p)})
 	}
 	return shared
 }
 
 // restoreOrCurrent 未指定任何共享目录：优先恢复上次退出前共享的目录，无记录时回退到当前目录。
-func restoreOrCurrent(cfg *filespace.Config) {
-	if last := filespace.LoadLastShared(); len(last) > 0 {
+func restoreOrCurrent(cfg *config.Config) {
+	if last := state.LoadLastShared(); len(last) > 0 {
 		cfg.Shared = sharedFromPaths(last)
 		fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(last, ", "))
 		return
@@ -63,18 +64,18 @@ func restoreOrCurrent(cfg *filespace.Config) {
 }
 
 // addCurrentDir 处理 -a/--add：在解析结果基础上额外共享当前目录（已在列表中则跳过）。
-func addCurrentDir(cfg *filespace.Config) {
+func addCurrentDir(cfg *config.Config) {
 	cwd, _ := os.Getwd()
 	if sharedContains(cfg.Shared, cwd) {
 		fmt.Printf("已指定 -a，当前目录已在共享列表中: %s\n", cwd)
 		return
 	}
-	cfg.Shared = append(cfg.Shared, filespace.SharedFolder{Path: cwd, Name: filepath.Base(cwd)})
+	cfg.Shared = append(cfg.Shared, config.SharedFolder{Path: cwd, Name: filepath.Base(cwd)})
 	fmt.Printf("已指定 -a，额外共享当前目录: %s\n", cwd)
 }
 
 // sharedContains 判断共享列表中是否已包含指定路径。
-func sharedContains(shared []filespace.SharedFolder, path string) bool {
+func sharedContains(shared []config.SharedFolder, path string) bool {
 	for _, f := range shared {
 		if f.Path == path {
 			return true

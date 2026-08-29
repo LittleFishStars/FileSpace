@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"filespace"
+	"filespace/internal/config"
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
@@ -15,7 +15,7 @@ import (
 
 // Options 构建 Server 所需的依赖。
 type Options struct {
-	Config  *filespace.Config
+	Config  *config.Config
 	NodeID  string
 	Version string
 	Folders *share.Manager
@@ -26,7 +26,7 @@ type Options struct {
 
 // Server HTTP API 服务。
 type Server struct {
-	cfg     *filespace.Config
+	cfg     *config.Config
 	nodeID  string
 	version string
 	folders *share.Manager

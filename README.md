@@ -23,14 +23,15 @@
 │   │   └── _components/  # 布局外壳、主题管理
 │   └── public/
 ├── backend/              # 后端（Go）
-│   ├── cmd/filespace/    # CLI 入口
+│   ├── cmd/filespace/    # CLI 入口（参数解析 / 共享目录解析 / 移交已有后端 / 服务运行）
 │   ├── internal/
 │   │   ├── api/          # HTTP API 路由与处理
+│   │   ├── config/       # 配置结构体与加载
 │   │   ├── discovery/    # mDNS 服务注册与发现
-│   │   ├── share/        # 共享目录扫描 / 索引
+│   │   ├── model/        # 数据模型（与前端对齐）
 │   │   ├── monitor/      # 系统状态采集（主机名 / 系统 / 运行时间 / IP，跨平台）
-│   │   └── model/        # 数据模型（与前端对齐）
-│   ├── config.go         # 配置结构体
+│   │   ├── share/        # 共享目录扫描 / 索引
+│   │   └── state/        # 本地状态（上次共享记录、运行锁）
 │   ├── config.yaml       # 配置示例
 │   └── version.go        # 版本号
 └── build/                # 构建产物（gitignored）：build/<平台>/ 下为二进制 + web/ 静态资源
