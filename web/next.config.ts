@@ -2,12 +2,18 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV === "development";
 
+// 生产构建：静态导出（output: 'export'），由 filespace 后端直接托管前端静态资源。
+// 开发模式：Next.js dev server，用 rewrites 把 /api 反代到后端（:8080）。
 const nextConfig: NextConfig = {
-  // 生产构建：standalone 自包含服务器（pnpm build → .next/standalone/，前端独立运行）。
-  // 由 web/start.js 引导：读取后端锁文件、必要时拉起后端，并通过 FILESPACE_BACKEND
-  // 环境变量告知后端地址；/api/* 反代统一由 proxy.ts 处理（dev 与生产一致）。
-  ...(isDev ? {} : { output: "standalone" as const }),
   images: { unoptimized: true },
 };
+
+if (isDev) {
+  nextConfig.rewrites = async () => [
+    { source: "/api/:path*", destination: "http://127.0.0.1:8080/api/:path*" },
+  ];
+} else {
+  nextConfig.output = "export";
+}
 
 export default nextConfig;

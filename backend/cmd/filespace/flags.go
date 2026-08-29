@@ -11,6 +11,7 @@ type options struct {
 	port       int
 	addCwd     bool // -a/--add：在解析出的共享目录之外额外共享当前目录
 	thisOnly   bool // --this：仅共享当前目录
+	web        bool // --web：同时启动前端界面（静态导出）并在浏览器中打开
 	showHelp   bool
 }
 
@@ -27,13 +28,14 @@ func parseFlags() (*options, []string) {
 	flag.BoolVar(&opts.addCwd, "add", false, "额外共享当前文件夹")
 	flag.BoolVar(&opts.addCwd, "a", false, "额外共享当前文件夹（-a, --add 简写）")
 	flag.BoolVar(&opts.thisOnly, "this", false, "仅共享当前目录")
+	flag.BoolVar(&opts.web, "web", false, "同时启动前端界面并在浏览器中打开")
 	flag.Parse()
 	return opts, flag.Args()
 }
 
 // usage 打印命令行帮助信息（help 命令与 -h 共用）。
 func usage() {
-	fmt.Print(`filespace — 文件空间后端（局域网文件共享 API）
+	fmt.Print(`filespace — 文件空间后端（局域网文件共享 API + 前端托管）
 
 用法:
   filespace [选项] [目录...]
@@ -44,6 +46,7 @@ func usage() {
   [目录...]               要共享的文件夹（可多个）；缺省恢复上次退出前共享的目录，无记录时共享当前目录
   -a, --add               额外共享当前文件夹（在解析出的共享目录之外追加）
   --this                  仅共享当前目录（不恢复上次共享的目录）
+  --web                   同时启动前端界面并在浏览器中打开（默认只启动后端 API）
   -c, --config <文件>     配置文件路径（YAML）
   -p, --port <端口>       监听端口（默认 8080）
   -h, --help              显示本帮助信息
@@ -53,17 +56,14 @@ func usage() {
 
 示例:
   filespace                        恢复上次共享的目录（无记录时共享当前目录）
+  filespace --web                  启动后端 + 前端界面，并在浏览器中打开
+  filespace --web -p 9000          指定端口并启动前端
   filespace -a                     恢复上次共享的目录，并额外共享当前目录
   filespace --this                 仅共享当前目录
   filespace ~/docs /mnt/data       共享多个目录
-  filespace -p 9000 ~/docs         指定端口
   filespace -c config.yaml         使用配置文件
 
 配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可在任何情况下额外共享当前目录，--this 可仅共享当前目录。
 检测到本机已有 filespace 后端在运行时（含运行在其他端口），本进程仅支持用目录参数或 -a 追加，把目录交给已运行的后端后自动退出。
-
-界面（前端）由独立程序运行：构建产物的 web/ 目录是 Next.js standalone 前端，
-执行 node web/start.js 会读取本机锁文件获取后端端口，若后端尚未启动则自动拉起一个后端
-（默认共享当前目录），并在浏览器中打开界面。
 `)
 }

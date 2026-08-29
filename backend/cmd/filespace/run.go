@@ -31,22 +31,28 @@ type app struct {
 	cancel  context.CancelFunc
 }
 
-// runServer 启动 HTTP API 服务与 mDNS 发现，等待退出信号后优雅关闭。
-// 界面（前端静态资源）由前端程序（Next.js standalone，node start.js）托管，本进程只提供 API。
+// runServer 启动纯后端 API 服务（无前端），等待退出信号后优雅关闭。
 func runServer(cfg *config.Config) {
 	a := &app{cfg: cfg}
 	a.build()
+	a.buildHTTPServer(nil) // nil → 纯 API，不托管静态文件
 	a.startHTTP()
 	a.startDiscovery()
 	a.waitAndShutdown()
 }
 
-// build 组装各组件（监控、共享管理器、发现缓存、HTTP 服务）。
+// build 组装各组件（监控、共享管理器、发现缓存）。
 func (a *app) build() {
 	a.mon = monitor.New()
 	a.nodeID = config.NodeID(a.mon.Hostname())
 	a.folders = share.NewManager(a.cfg.Shared)
 	a.peers = discovery.NewCache(a.nodeID)
+}
+
+// buildHTTPServer 创建 HTTP 服务。
+// staticFS 不为 nil 时，组合 API 路由与静态文件服务器（--web 模式）；
+// 为 nil 时，仅提供纯 API 路由。
+func (a *app) buildHTTPServer(staticFS http.FileSystem) {
 	srv := api.NewServer(api.Options{
 		Config:  a.cfg,
 		NodeID:  a.nodeID,
@@ -55,7 +61,13 @@ func (a *app) build() {
 		Monitor: a.mon,
 		Peers:   a.peers,
 	})
-	a.httpSrv = &http.Server{Addr: fmt.Sprintf(":%d", a.cfg.ListenPort), Handler: srv.Handler()}
+	var handler http.Handler
+	if staticFS != nil {
+		handler = srv.HandlerWithStatic(staticFS)
+	} else {
+		handler = srv.Handler()
+	}
+	a.httpSrv = &http.Server{Addr: fmt.Sprintf(":%d", a.cfg.ListenPort), Handler: handler}
 }
 
 // startHTTP 后台启动 HTTP 服务并打印启动信息。
@@ -70,7 +82,7 @@ func (a *app) startHTTP() {
 
 // printStartup 打印服务地址与共享目录列表。
 func (a *app) printStartup() {
-	fmt.Printf("🌐 后端 API 已启动: http://%s:%d（前端界面由 Next.js 独立运行: node web/start.js）\n", a.mon.IP(), a.cfg.ListenPort)
+	fmt.Printf("🌐 后端 API 已启动: http://%s:%d\n", a.mon.IP(), a.cfg.ListenPort)
 	fmt.Printf("📂 共享 %d 个目录:\n", len(a.cfg.Shared))
 	for _, f := range a.cfg.Shared {
 		fmt.Printf("   - %s（%s）\n", f.Path, f.Name)

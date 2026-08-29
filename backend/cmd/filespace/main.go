@@ -38,5 +38,10 @@ func main() {
 	}
 
 	resolveSharedFolders(cfg, opts, args)
-	runServer(cfg)
+
+	if opts.web {
+		runServerWithWeb(cfg)
+	} else {
+		runServer(cfg)
+	}
 }

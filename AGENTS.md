@@ -1,20 +1,20 @@
 # 文件空间 FileSpace — Agent 指南
 
-局域网文件共享工具：在任意文件夹执行前端程序即可共享该文件夹（自动拉起后端），打开浏览器即可查看局域网内所有已共享的文件夹。
+局域网文件共享工具：在任意文件夹执行 `filespace --web` 即可共享该文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
 
-前后端是两个独立程序：**filespace**（后端，纯 API）+ **前端**（Next.js standalone 服务器，即前端本身，运行入口 `node web/start.js`，安装包命令 `filespace-web`）。
+前后端合并为一个程序：**filespace**（Go 后端二进制）。不带参数只启动后端 API；带 `--web` 参数时后端托管前端静态资源（`output: 'export'` → `web/out/`，由 `go:embed` 嵌入），在浏览器中打开界面。
 
 ## 项目结构
 
-- `web/`     — 前端（Next.js 16 App Router + antd + Tailwind v4）：`proxy.ts` 反代 /api、`start.js` 前端引导
-- `backend/` — 后端（Go，P2P + mDNS）：`cmd/filespace`（API）
+- `web/`     — 前端（Next.js 16 App Router + antd + Tailwind v4）：`next.config.ts` 配置 `output: 'export'`（生产）与 `rewrites`（开发模式反代 /api）
+- `backend/` — 后端（Go，P2P + mDNS）：`cmd/filespace`（API + `--web` 模式静态文件托管）
 - `scripts/` — 构建脚本（`build.py`）与开发启动脚本（`dev.py`），Python
-- `build/`   — 构建产物（gitignored）：`build/web/`（前端，平台无关）+ `build/backend/<平台>/`（后端）
+- `build/`   — 构建产物（gitignored）：`build/backend/<平台>/`（后端，含嵌入的前端静态资源）
 
 ## 常用命令
 
 ```bash
-make dev                    # 前端 :3000（scripts/dev.py 读锁文件自动拉起/复用后端）
+make dev                    # 前端 :3000 + 后端 :8080（scripts/dev.py 自动拉起后端）
 make dev-web / dev-backend  # 单独启动（dev-web 同 dev）
 make build                  # 全部平台构建（等价 python3 scripts/build.py）
 make build-linux / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
@@ -24,19 +24,20 @@ make pack                   # 打包安装包（等价 python3 scripts/build.py 
 make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pacman/AppImage）
 ```
 
-打包依赖系统工具：wixl（msitools，Windows .msi）、dpkg-deb（dpkg）、makepkg（base-devel）、mksquashfs（squashfs-tools，AppImage 手动构建 + type2 runtime 自动缓存）、可选 rsvg-convert（librsvg）；脚本缺失时提示安装命令。安装包输出到 `build/packages/<平台>/`（Linux 包声明依赖 nodejs，前端为 Next.js standalone）。
+打包依赖系统工具：wixl（msitools，Windows .msi）、dpkg-deb（dpkg）、makepkg（base-devel）、mksquashfs（squashfs-tools，AppImage 手动构建 + type2 runtime 自动缓存）、可选 rsvg-convert（librsvg）；脚本缺失时提示安装命令。安装包输出到 `build/packages/<平台>/`。
 
 ## 后端约定
 
 - Go 1.27，模块名 `filespace`；依赖：gopsutil（跨平台采集）、zeroconf（mDNS）、yaml.v3（配置）
 - 文件可预览性由**内容嗅探**判定（`http.DetectContentType`），`FileInfo.previewable` 供前端隐藏二进制文件的预览按钮，勿改回硬编码扩展名
+- `--web` 模式：`go:embed` 嵌入 `backend/cmd/filespace/web/` 下的前端静态资源，`HandlerWithStatic` 组合 API 路由与静态文件服务器
 - 修改依赖后 `go mod tidy`；提交前 `gofmt` + `go vet` + `go build ./...`
 
 ## 前端约定
 
-- Next.js 16 + `output: 'standalone'`（生产构建产出自包含服务器 `.next/standalone/`，由 `start.js` 引导启动；**动态路由段无法预渲染**，用查询参数（如 `/folders?folderId=xxx`））
-- `/api/*` 反代统一由 `proxy.ts` 处理（Next.js proxy 文件约定，dev 与生产一致）：后端地址取环境变量 `FILESPACE_BACKEND`（默认 http://127.0.0.1:8080），由 `start.js` / `scripts/dev.py` 按后端实际端口设置；**勿**改回 next.config rewrites（静态导出与 proxy 均不支持）
-- `start.js` 是前端引导（读锁文件 / 拉起后端 / 设 PORT 与 FILESPACE_BACKEND / require server.js），随构建拷贝进 `build/web/`；后端定位依次为 build/backend/<平台>/、web/ 同级、PATH；pnpm 布局下 standalone trace 会漏 next 运行时依赖，`build.py` 的 `patch_standalone_deps` 负责补拷，`strip_native_deps` 剔除平台 native 依赖（@next/swc-*、sharp）使 web/ 平台无关，勿删除
+- Next.js 16 + `output: 'export'`（生产构建产出静态文件到 `web/out/`，由后端 go:embed 嵌入托管；**动态路由段无法预渲染**，用查询参数（如 `/folders?folderId=xxx`））
+- 开发模式：`next.config.ts` 的 `rewrites` 将 `/api/*` 反代到后端（http://127.0.0.1:8080）；生产模式：前端静态资源由后端直接托管，`/api/*` 同源访问无需反代
+- 构建脚本 `build.py` 流程：`pnpm build`（→ `web/out/`）→ 拷贝到 `backend/cmd/filespace/web/`（go:embed 源）→ `go build` 交叉编译
 - 卡片组件在 `web/app/_cards/`，页面在 `web/app/`，API 封装在 `web/app/_lib/api.ts`
 - 预览渲染路由用 `@smazeeapps/file-viewer` 的 `detectFileType`（勿硬编码扩展名）；不支持的非二进制格式以纯文本显示
 - **勿移除** `file_preview.tsx` 顶部的 `window.Prism = {manual: true}`（阻止 prism 自动 highlightAll 破坏代码逐行结构）
@@ -48,7 +49,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定：`backend/version.go` 当前为 `0.1.15`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
+- 版本号约定：`backend/version.go` 当前为 `0.1.19`；每次提交代码时先将版本号最后一位（patch）加一，除非用户另有说明
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->
