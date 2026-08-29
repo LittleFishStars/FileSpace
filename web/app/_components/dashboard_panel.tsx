@@ -180,9 +180,9 @@ export default function DashboardPanel() {
         );
     }
 
-    // 全屏布局：内容偏上（非居中），四周留白；内容限宽，避免统计卡片过宽
+    // 全屏居中布局：垂直 + 水平居中，四周留白；内容限宽，避免统计卡片过宽
     return (
-        <div className="flex min-h-screen flex-col items-center justify-start p-6 sm:p-10 pt-16 sm:pt-20">
+        <div className="flex min-h-screen flex-col items-center justify-center p-6 sm:p-10">
             <div className="w-full max-w-3xl">{content}</div>
         </div>
     );
