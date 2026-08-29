@@ -53,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/node", s.handleNode)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
+	mux.HandleFunc("POST /api/folders/add", s.handleAddFolders)
 	mux.HandleFunc("GET /api/folders/{id}/tree", s.handleTree)
 	mux.HandleFunc("GET /api/folders/{id}/download", s.handleDownload)
 	mux.HandleFunc("GET /api/peers", s.handlePeers)
@@ -64,7 +65,7 @@ func (s *Server) Handler() http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

@@ -2,7 +2,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -71,6 +74,7 @@ func usage() {
   filespace -c config.yaml         使用配置文件
 
 配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可在任何情况下额外共享当前目录，--this 可仅共享当前目录。
+检测到同端口已有后端在运行时，本进程仅支持用目录参数或 -a 追加，把目录交给已运行的后端后自动退出。
 `)
 }
 
@@ -112,6 +116,31 @@ func main() {
 	if port != 0 {
 		cfg.ListenPort = port
 	}
+
+	// 探测是否已有 filespace 后端在运行：若有，仅支持用目录参数或 -a 追加共享目录，
+	// 把目录交给已有后端后自身退出，避免端口冲突
+	if err := probeBackend(cfg.ListenPort); err != nil {
+		switch {
+		case errors.Is(err, errBackendRunning):
+			paths := make([]string, 0, len(args)+1)
+			paths = append(paths, args...)
+			if addCwd {
+				cwd, _ := os.Getwd()
+				paths = append(paths, cwd)
+			}
+			if len(paths) == 0 {
+				log.Fatalf("检测到已有 filespace 后端在运行（端口 %d），仅支持使用目录参数或 -a 追加共享目录（--this 等独占模式不适用）", cfg.ListenPort)
+			}
+			if err := sendAddFolders(cfg.ListenPort, paths); err != nil {
+				log.Fatalf("向已有后端追加共享目录失败: %v", err)
+			}
+			fmt.Printf("已将 %d 个目录交给已运行的后端（端口 %d）共享: %s\n", len(paths), cfg.ListenPort, strings.Join(paths, ", "))
+			return
+		default:
+			log.Fatalf("端口 %d 不可用: %v", cfg.ListenPort, err)
+		}
+	}
+
 	// 共享目录解析：目录参数 > 配置文件 shared_folders > 上次共享记录 > 当前目录；
 	// --this 仅共享当前目录（跳过恢复），与目录参数 / 配置中的 shared_folders 互斥
 	if thisOnly {
@@ -200,9 +229,10 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
 	fmt.Println("\n正在退出...")
-	// 记录本次共享的目录，供下次未指定目录时恢复
-	paths := make([]string, 0, len(cfg.Shared))
-	for _, f := range cfg.Shared {
+	// 记录本次共享的目录（含运行中追加的），供下次未指定目录时恢复
+	infos := folders.List()
+	paths := make([]string, 0, len(infos))
+	for _, f := range infos {
 		paths = append(paths, f.Path)
 	}
 	if err := filespace.SaveLastShared(paths); err != nil {
@@ -224,4 +254,52 @@ func sharedContains(shared []filespace.SharedFolder, path string) bool {
 		}
 	}
 	return false
+}
+
+// errBackendRunning 标记端口上已探测到 filespace 后端在运行。
+var errBackendRunning = errors.New("已有 filespace 后端在运行")
+
+// probeBackend 探测端口上是否已有 filespace 后端在运行：
+//   - 返回 errBackendRunning：端口上是 filespace 后端
+//   - 返回其他错误：端口被占用但并非 filespace
+//   - 返回 nil：端口空闲（无后端），可正常启动
+func probeBackend(port int) error {
+	client := &http.Client{Timeout: 800 * time.Millisecond}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/node", port))
+	if err != nil {
+		return nil // 连接失败视为无后端；若端口被占用，后续 ListenAndServe 会兜底报错
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("端口 %d 上有服务响应但非 filespace（HTTP %d）", port, resp.StatusCode)
+	}
+	var info struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.ID == "" {
+		return fmt.Errorf("端口 %d 上的服务响应不符合 filespace 格式", port)
+	}
+	return errBackendRunning
+}
+
+// sendAddFolders 把要追加的目录列表发给已运行的后端。
+func sendAddFolders(port int, paths []string) error {
+	body, err := json.Marshal(map[string]any{"paths": paths})
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/folders/add", port), "application/json", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, e.Error)
+	}
+	return nil
 }

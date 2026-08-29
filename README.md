@@ -114,12 +114,15 @@ make dev-backend   # 后端（:8080）
 
 未指定共享目录（命令行与配置文件均未设置）时，后端会恢复**上次退出前共享的目录**；每次正常退出（Ctrl+C / kill / 终端关闭）前会把当前共享目录记录到用户配置目录下的 `filespace/last-shared.yaml`（Linux `~/.config/filespace/`、macOS `~/Library/Application Support/filespace/`、Windows `%AppData%\filespace\`）。删除该文件即可回到「默认共享当前目录」的行为；`filespace -a` 可在解析出的共享目录之外**额外**共享当前目录（已在列表中则跳过），可与目录参数、配置文件同时使用；`filespace --this` 则**仅**共享当前目录（不恢复上次记录，与目录参数、配置文件中的 shared_folders 互斥）。
 
+同一端口已有后端在运行时（例如默认 8080 已被一个 `filespace` 实例占用），再启动的进程会先探测该端口：若探测到 filespace 后端，则仅允许用**目录参数或 `-a`** 把目录追加给已运行的后端（通过 `POST /api/folders/add` 交给它），自身随即退出，避免端口冲突；无追加内容（如无参数或 `--this`）时提示并退出。追加的目录同样会被记录，下次启动时一并恢复。
+
 ## API 一览
 
 | 接口 | 说明 |
 |---|---|
 | `GET /api/node` | 本节点信息 |
 | `GET /api/folders` | 本节点共享的文件夹列表 |
+| `POST /api/folders/add` | 追加共享目录（供同机另一 filespace 进程移交目录） |
 | `GET /api/folders/{id}/tree` | 文件树（懒加载） |
 | `GET /api/folders/{id}/download` | 文件下载（支持 Range 断点续传） |
 | `GET /api/peers` | mDNS 发现的其他节点（含其共享文件夹） |

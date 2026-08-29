@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"filespace"
@@ -19,6 +20,10 @@ var (
 	ErrFolderNotFound = errors.New("共享目录不存在")
 	// ErrPathForbidden 路径超出共享目录范围。
 	ErrPathForbidden = errors.New("路径超出共享目录范围")
+	// ErrFolderExists 目录已在共享列表中。
+	ErrFolderExists = errors.New("目录已在共享列表中")
+	// ErrNotDirectory 路径不是目录。
+	ErrNotDirectory = errors.New("路径不是目录")
 )
 
 // Folder 一个共享目录。
@@ -28,8 +33,9 @@ type Folder struct {
 	Path string
 }
 
-// Manager 管理本节点共享的目录。
+// Manager 管理本节点共享的目录（支持运行中追加）。
 type Manager struct {
+	mu      sync.RWMutex
 	folders []Folder
 }
 
@@ -50,10 +56,39 @@ func NewManager(shared []filespace.SharedFolder) *Manager {
 	return &Manager{folders: folders}
 }
 
+// Add 运行中追加一个共享目录：校验路径存在且为目录，已在列表中则返回 ErrFolderExists。
+func (m *Manager) Add(path string) (Folder, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return Folder{}, err
+	}
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return Folder{}, err
+	}
+	if !fi.IsDir() {
+		return Folder{}, ErrNotDirectory
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, f := range m.folders {
+		if f.Path == abs {
+			return f, ErrFolderExists
+		}
+	}
+	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs}
+	m.folders = append(m.folders, f)
+	return f, nil
+}
+
 // List 返回共享文件夹列表（含实时统计的文件数 / 总大小 / 最近更新）。
 func (m *Manager) List() []model.FolderInfo {
-	result := make([]model.FolderInfo, 0, len(m.folders))
-	for _, f := range m.folders {
+	m.mu.RLock()
+	folders := make([]Folder, len(m.folders))
+	copy(folders, m.folders)
+	m.mu.RUnlock()
+	result := make([]model.FolderInfo, 0, len(folders))
+	for _, f := range folders {
 		count, size, updated := scanFolder(f.Path)
 		result = append(result, model.FolderInfo{
 			ID:        f.ID,
@@ -69,6 +104,8 @@ func (m *Manager) List() []model.FolderInfo {
 
 // Resolve 按 ID 查找共享目录。
 func (m *Manager) Resolve(id string) (*Folder, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	for i := range m.folders {
 		if m.folders[i].ID == id {
 			return &m.folders[i], true
