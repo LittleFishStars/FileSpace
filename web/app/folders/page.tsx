@@ -164,7 +164,10 @@ function FolderBrowser() {
 
     // 懒加载当前目录内容
     useEffect(() => {
-        if (!folderId) return;
+        // 文件夹归属尚未解析完成（folder 为 null）时不发起请求：
+        // 初始 remoteBase='' 会误打到本机后端，远端文件夹 id 在本机后端必然 404，
+        // 造成"先报加载失败、解析完再刷新出来"的错觉
+        if (!folderId || !folder) return;
         let cancelled = false;
         async function load() {
             setEntries(null);
@@ -191,7 +194,7 @@ function FolderBrowser() {
         return () => {
             cancelled = true;
         };
-    }, [folderId, path, remoteBase, token, authRequired]);
+    }, [folderId, path, remoteBase, token, authRequired, folder]);
 
     /** 提交密码换取访问令牌，成功后刷新文件列表 */
     const handleAuthSubmit = async () => {
