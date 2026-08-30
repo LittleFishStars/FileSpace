@@ -41,6 +41,16 @@ func (c *Cache) UpsertPeer(p *model.PeerInfo) {
 	c.lastSeen[p.Node.ID] = now
 }
 
+// Touch 记录一次成功的活跃探测（HTTP 心跳），刷新该节点的在线时间戳。
+// 仅对已知节点生效；探测失败不应调用，让 lastSeen 自然过期以标记离线。
+func (c *Cache) Touch(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.peers[id]; ok {
+		c.lastSeen[id] = time.Now()
+	}
+}
+
 // List 返回已知节点列表（附在线状态，超时未刷新标记离线）。
 func (c *Cache) List() []model.PeerInfo {
 	c.mu.RLock()
