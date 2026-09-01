@@ -14,13 +14,47 @@ import (
 	"filespace/internal/model"
 )
 
-// Watch 持续监听局域网内的 filespace 服务，
-// 对每个新发现的节点请求其 /api/node 与 /api/folders，写入缓存。
+// Watch 持续监听局域网内的 filespace 服务，并周期性探测已发现节点，写入缓存。
+//
+// 两条刷新路径互为兜底：
+//  1. mDNS Browse：负责发现新节点并持续刷新（周期重建，见 browseLoop）。
+//  2. HTTP 心跳：对缓存中已知节点直连 GET /api/node 刷新在线状态——
+//     部分网络（如 KVM 虚拟机 NAT 网桥）的 mDNS 组播不可靠，HTTP 直连更稳定。
 func Watch(ctx context.Context, service, domain string, cache *Cache, fetchTimeout time.Duration) {
+	go browseLoop(ctx, service, domain, cache, fetchTimeout)
+	go heartbeatLoop(ctx, cache, heartbeatInterval, fetchTimeout)
+}
+
+// browseInterval 单次 Browse 会话的存活时长：到期后重建 Browse（重新发送 PTR 查询）。
+// 原因：grandcat/zeroconf 的 Browse 在收到第一个匹配条目后会停止周期查询
+// （mainloop 调用 disableProbing），而服务端（同为该库）只在启动时宣告一次、
+// 不周期重发，两端互相发现后会进入"只听不说"的静默状态，缓存不再刷新、
+// 节点在 offlineTimeout 后被误判离线。周期重建强制持续发送查询以恢复刷新。
+const browseInterval = 30 * time.Second
+
+// browseLoop 周期性地重建 mDNS Browse，保证查询持续发送、缓存持续刷新。
+func browseLoop(ctx context.Context, service, domain string, cache *Cache, fetchTimeout time.Duration) {
+	for ctx.Err() == nil {
+		if !runBrowse(ctx, service, domain, cache, fetchTimeout) {
+			// 解析器创建失败等：稍等再试，避免忙循环。
+			select {
+			case <-time.After(5 * time.Second):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+// runBrowse 执行一轮 mDNS Browse：存活 browseInterval 时长后返回。
+// 返回 false 表示本轮未正常跑完（解析器创建失败、Browse 启动失败等环境性问题）。
+func runBrowse(ctx context.Context, service, domain string, cache *Cache, fetchTimeout time.Duration) bool {
+	browCtx, cancel := context.WithTimeout(ctx, browseInterval)
+	defer cancel()
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		log.Printf("mDNS 解析器创建失败: %v", err)
-		return
+		return false
 	}
 	entries := make(chan *zeroconf.ServiceEntry)
 	go func() {
@@ -28,9 +62,47 @@ func Watch(ctx context.Context, service, domain string, cache *Cache, fetchTimeo
 			handleEntry(ctx, entry, cache, fetchTimeout)
 		}
 	}()
-	if err := resolver.Browse(ctx, service, domain, entries); err != nil {
+	// Browse 同步阻塞直到 browCtx 结束；启动失败（网络异常等）立即返回，
+	// 交由 browseLoop 稍后重试，避免空等满一个 browseInterval。
+	if err := resolver.Browse(browCtx, service, domain, entries); err != nil {
 		log.Printf("mDNS 监听失败: %v", err)
+		return false
 	}
+	return true
+}
+
+// heartbeatInterval HTTP 心跳间隔：对已知节点直连探测刷新在线状态，
+// 弥补 mDNS 组播在部分网络（如虚拟机 NAT 网桥）不可靠的问题。
+// 需明显小于 offlineTimeout（60s），保证心跳间隔内至少一次成功刷新。
+const heartbeatInterval = 20 * time.Second
+
+// heartbeatLoop 周期性对缓存中的已知节点发起 HTTP 探测，
+// 成功即刷新其在线时间戳（Touch），失败保持原状（lastSeen 过期后标记离线）。
+func heartbeatLoop(ctx context.Context, cache *Cache, interval, timeout time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, p := range cache.List() {
+				if ctx.Err() != nil {
+					return
+				}
+				if err := probePeer(ctx, p, timeout); err == nil {
+					cache.Touch(p.Node.ID)
+				}
+			}
+		}
+	}
+}
+
+// probePeer 直连探测一个已知节点的存活：GET /api/node 成功即认为在线。
+func probePeer(ctx context.Context, p model.PeerInfo, timeout time.Duration) error {
+	client := &http.Client{Timeout: timeout}
+	var node model.NodeInfo
+	return getJSON(ctx, client, "http://"+peerAddr(&p)+"/api/node", &node)
 }
 
 // handleEntry 处理一个 mDNS 服务条目，抓取节点详情后写入缓存。

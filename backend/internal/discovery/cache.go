@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,6 +10,18 @@ import (
 
 // offlineTimeout 超过该时长未刷新则标记为离线。
 const offlineTimeout = 60 * time.Second
+
+// defaultPort 节点未上报 ListenAddr 时的回退端口（与后端默认监听端口一致）。
+const defaultPort = 8080
+
+// peerAddr 返回节点的 API 基地址（host:port）：
+// 优先使用节点上报的 ListenAddr，缺失时回退到 IP + 默认端口。
+func peerAddr(p *model.PeerInfo) string {
+	if p.Node.ListenAddr != "" {
+		return p.Node.ListenAddr
+	}
+	return fmt.Sprintf("%s:%d", p.Node.IP, defaultPort)
+}
 
 // Cache 缓存 mDNS 发现的其他节点。
 type Cache struct {
@@ -39,6 +52,25 @@ func (c *Cache) UpsertPeer(p *model.PeerInfo) {
 	p.LastSeen = now.Format(time.RFC3339)
 	c.peers[p.Node.ID] = p
 	c.lastSeen[p.Node.ID] = now
+}
+
+// Remove 移除指定节点（收到对方退出通知时调用，立即从在线列表消失，
+// 无需等待 offlineTimeout 超时）。
+func (c *Cache) Remove(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.peers, id)
+	delete(c.lastSeen, id)
+}
+
+// Touch 记录一次成功的活跃探测（HTTP 心跳），刷新该节点的在线时间戳。
+// 仅对已知节点生效；探测失败不应调用，让 lastSeen 自然过期以标记离线。
+func (c *Cache) Touch(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.peers[id]; ok {
+		c.lastSeen[id] = time.Now()
+	}
 }
 
 // List 返回已知节点列表（附在线状态，超时未刷新标记离线）。

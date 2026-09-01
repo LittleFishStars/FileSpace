@@ -3,7 +3,8 @@
 import React, {useEffect, useState} from 'react';
 import {Alert, Empty, Spin} from 'antd';
 import HostCard, {type HostInfo} from '../_cards/host_card';
-import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo} from '../_lib/api';
+import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo, type ApiPeerInfo} from '../_lib/api';
+import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
 function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
@@ -27,6 +28,17 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
     };
 }
 
+/** 把发现的节点列表转换为主机列表：排除本机（本机节点通过 /local 管理） */
+function buildHosts(node: ApiNodeInfo, peers: ApiPeerInfo[]): HostInfo[] {
+    const list: HostInfo[] = [];
+    for (const peer of peers) {
+        if (peer.node && peer.node.id !== node.id) {
+            list.push(toHostInfo(peer.node, peer.folders));
+        }
+    }
+    return list;
+}
+
 /**
  * 局域网节点面板：展示 mDNS 发现的其他节点（本机节点不在此列出，
  * 本机节点通过顶栏选项卡切到 /local 管理）。
@@ -45,22 +57,30 @@ export default function NodesPanel() {
                     fetchPeers(),
                 ]);
                 if (cancelled) return;
-                const list: HostInfo[] = [];
-                for (const peer of peers) {
-                    if (peer.node && peer.node.id !== node.id) {
-                        list.push(toHostInfo(peer.node, peer.folders));
-                    }
-                }
-                setHosts(list);
+                setHosts(buildHosts(node, peers));
             } catch (e) {
                 if (!cancelled) {
                     setError(e instanceof Error ? e.message : '无法连接后端服务');
                 }
             }
         }
+        // 定时刷新节点列表：节点上线/退出（含收到退出通知）后即时更新，无需手动刷新页面。
+        async function refresh() {
+            try {
+                const [node, peers] = await Promise.all([
+                    fetchNode(),
+                    fetchPeers(),
+                ]);
+                if (!cancelled) setHosts(buildHosts(node, peers));
+            } catch {
+                // 轮询失败保持现有数据，等待下一次
+            }
+        }
         load();
+        const timer = setInterval(refresh, PEER_REFRESH_INTERVAL);
         return () => {
             cancelled = true;
+            clearInterval(timer);
         };
     }, []);
 

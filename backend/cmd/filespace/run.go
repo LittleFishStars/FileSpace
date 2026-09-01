@@ -101,12 +101,19 @@ func (a *app) startDiscovery() {
 }
 
 // waitAndShutdown 等待退出信号（Ctrl+C / kill / 终端关闭），记录共享目录后优雅关闭。
+// 关闭顺序：先通知其他节点本节点已退出（让在线列表立即更新），
+// 再取消 mDNS 注册（发送 goodbye 包）并关闭 HTTP 服务。
 func (a *app) waitAndShutdown() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
 	fmt.Println("\n正在退出...")
 	saveLastShared(a.folders)
+	// 通知其他节点本节点已退出：它们收到后立即把本节点从在线列表移除，
+	// 无需等待离线超时（60s）。
+	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	discovery.NotifyExit(notifyCtx, a.peers, a.nodeID, 1*time.Second)
+	notifyCancel()
 	a.cancel()
 	shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
 	defer done()
