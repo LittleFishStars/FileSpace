@@ -18,6 +18,9 @@
 /backend/bin/
 /backend/cmd/filespace/web/
 
+# Windows 资源对象（构建期生成、嵌入 exe 后删除；防手滑提交）
+*.syso
+
 # python
 __pycache__/
 *.pyc
