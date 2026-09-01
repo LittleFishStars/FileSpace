@@ -11,6 +11,8 @@ export interface ApiNodeInfo {
     listenAddr: string
     /** 该节点是否设置了共享访问密码（远程访问需先认证） */
     auth?: boolean
+    /** 当前请求是否来自本机（回环访问）：远程访问时本机节点按局域网节点展示 */
+    local?: boolean
 }
 
 export interface ApiFolderInfo {

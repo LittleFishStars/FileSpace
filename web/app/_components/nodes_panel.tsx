@@ -3,7 +3,7 @@
 import React, {useEffect, useState} from 'react';
 import {Alert, Empty, Spin} from 'antd';
 import HostCard, {type HostInfo} from '../_cards/host_card';
-import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo, type ApiPeerInfo} from '../_lib/api';
+import {fetchFolders, fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo, type ApiPeerInfo} from '../_lib/api';
 import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
@@ -28,9 +28,17 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
     };
 }
 
-/** 把发现的节点列表转换为主机列表：排除本机（本机节点通过 /local 管理） */
-function buildHosts(node: ApiNodeInfo, peers: ApiPeerInfo[]): HostInfo[] {
+/**
+ * 把发现的节点转换为主机列表。
+ * - 本机访问（node.local === true）：排除本机（本机节点通过 /local 管理）。
+ * - 远程访问（node.local === false）：本机节点也按普通局域网节点展示
+ *   （本机共享文件夹通过 /api/folders 获取，访问走同源 API），不再单独管理。
+ */
+function buildHosts(node: ApiNodeInfo, localFolders: ApiFolderInfo[], peers: ApiPeerInfo[]): HostInfo[] {
     const list: HostInfo[] = [];
+    if (node.local === false) {
+        list.push(toHostInfo(node, localFolders));
+    }
     for (const peer of peers) {
         if (peer.node && peer.node.id !== node.id) {
             list.push(toHostInfo(peer.node, peer.folders));
@@ -40,8 +48,8 @@ function buildHosts(node: ApiNodeInfo, peers: ApiPeerInfo[]): HostInfo[] {
 }
 
 /**
- * 局域网节点面板：展示 mDNS 发现的其他节点（本机节点不在此列出，
- * 本机节点通过顶栏选项卡切到 /local 管理）。
+ * 局域网节点面板：展示 mDNS 发现的节点（本机访问时排除本机，
+ * 本机通过顶栏选项卡切到 /local 管理；远程访问时本机节点也作为局域网节点展示）。
  * 被 /nodes 局域网节点页使用。
  */
 export default function NodesPanel() {
@@ -52,12 +60,13 @@ export default function NodesPanel() {
         let cancelled = false;
         async function load() {
             try {
-                const [node, peers] = await Promise.all([
+                const [node, localFolders, peers] = await Promise.all([
                     fetchNode(),
+                    fetchFolders(),
                     fetchPeers(),
                 ]);
                 if (cancelled) return;
-                setHosts(buildHosts(node, peers));
+                setHosts(buildHosts(node, localFolders, peers));
             } catch (e) {
                 if (!cancelled) {
                     setError(e instanceof Error ? e.message : '无法连接后端服务');
@@ -67,11 +76,12 @@ export default function NodesPanel() {
         // 定时刷新节点列表：节点上线/退出（含收到退出通知）后即时更新，无需手动刷新页面。
         async function refresh() {
             try {
-                const [node, peers] = await Promise.all([
+                const [node, localFolders, peers] = await Promise.all([
                     fetchNode(),
+                    fetchFolders(),
                     fetchPeers(),
                 ]);
-                if (!cancelled) setHosts(buildHosts(node, peers));
+                if (!cancelled) setHosts(buildHosts(node, localFolders, peers));
             } catch {
                 // 轮询失败保持现有数据，等待下一次
             }

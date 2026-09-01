@@ -265,6 +265,24 @@ export default function LocalPanel() {
                 <Spin size="large"/>
             </div>
         );
+    } else if (node.local === false) {
+        // 远程访问守卫：本机共享管理仅限本机回环操作（添加/删除接口后端强制校验），
+        // 远程访问时本机节点已作为局域网节点展示，引导前往局域网节点页浏览。
+        content = (
+            <Alert
+                type="info"
+                showIcon
+                title="本机共享管理仅限本机访问"
+                description="当前是从其他设备访问，本机节点已作为局域网节点展示，可在「局域网节点」页浏览本机的共享文件夹；添加 / 删除共享文件夹请在本机浏览器中打开本页面操作。"
+                action={
+                    <Link href="/nodes">
+                        <Button type="primary" size="small">
+                            前往局域网节点
+                        </Button>
+                    </Link>
+                }
+            />
+        );
     } else {
         content = (
             <div className="flex flex-col gap-4">

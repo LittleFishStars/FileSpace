@@ -2,7 +2,7 @@
 
 <img src="web/public/filespace-icon.svg" alt="FileSpace" width="120" height="120">
 
-# 文件空间 FileSpace
+# FileSpace | 文件空间
 
 局域网文件共享工具：在任意文件夹执行 `filespace --web` 即可共享该文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
 
@@ -51,7 +51,7 @@
 │   │   ├── share/        # 共享目录扫描 / 索引
 │   │   └── state/        # 本地状态（上次共享记录、运行锁）
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.3.2-2609012207）
+│   └── version.go        # 版本号（当前 0.3.2-2609012252）
 └── build/                # 构建产物（gitignored）：build/<平台>/（后端，含嵌入的前端静态资源）
 ```
 

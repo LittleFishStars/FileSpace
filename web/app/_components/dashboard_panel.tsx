@@ -28,7 +28,7 @@ import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
  * 主界面（/）：FileSpace 总览页。
  * 展示品牌（logo + 标题 + 软件版本）与全局统计：
  * 在线节点数（本机 + mDNS 发现的在线节点）、共享的总文件夹数、共享的总文件大小，
- * 并提供进入局域网节点 / 本机节点管理的快捷入口。
+ * 并提供进入局域网节点 / 本机节点管理的快捷入口（远程访问时隐藏本机管理入口）。
  */
 
 export default function DashboardPanel() {
@@ -174,11 +174,14 @@ export default function DashboardPanel() {
                             浏览局域网节点
                         </Button>
                     </Link>
-                    <Link href="/local">
-                        <Button size="large" icon={<SettingOutlined/>}>
-                            管理本机共享
-                        </Button>
-                    </Link>
+                    {/* 远程访问时本机节点按局域网节点展示，本机共享管理仅限本机回环操作 */}
+                    {node.local !== false && (
+                        <Link href="/local">
+                            <Button size="large" icon={<SettingOutlined/>}>
+                                管理本机共享
+                            </Button>
+                        </Link>
+                    )}
                 </div>
             </div>
         );

@@ -14,6 +14,9 @@ type NodeInfo struct {
 	// Auth 该节点是否设置了共享访问密码：远程节点需先通过 /api/auth 认证
 	// 才能查看/下载本节点共享的文件内容（本机回环访问不受影响）。
 	Auth bool `json:"auth"`
+	// Local 当前请求是否来自本机（回环地址）：远程访问时前端据此把本机节点
+	// 当作普通局域网节点展示（隐藏本机管理入口），而非显示「本机节点」。
+	Local bool `json:"local"`
 }
 
 // FolderInfo 共享文件夹信息。

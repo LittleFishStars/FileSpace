@@ -113,7 +113,10 @@ function FolderBrowser() {
                 let found = folders.find((f) => f.id === folderId);
                 let host = node.hostname;
                 let base = '';
-                let local = true;
+                // 仅本机访问（node.local）时，本机共享文件夹才按「本机文件夹」处理：
+                // 远程访问时本机文件夹同样按远程文件夹展示（下载/预览，
+                // 「打开」操作调用本机系统默认应用，仅限本机回环）。
+                let local = node.local !== false;
                 // 该文件夹是否设置了访问密码（按文件夹判断：同一节点不同文件夹密码可能不同）
                 let folderAuth = false;
                 if (!found) {
