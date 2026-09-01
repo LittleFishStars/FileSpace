@@ -47,7 +47,7 @@ func browseLoop(ctx context.Context, service, domain string, cache *Cache, fetch
 }
 
 // runBrowse 执行一轮 mDNS Browse：存活 browseInterval 时长后返回。
-// 返回 false 表示本轮未正常跑完（解析器创建失败等环境性问题）。
+// 返回 false 表示本轮未正常跑完（解析器创建失败、Browse 启动失败等环境性问题）。
 func runBrowse(ctx context.Context, service, domain string, cache *Cache, fetchTimeout time.Duration) bool {
 	browCtx, cancel := context.WithTimeout(ctx, browseInterval)
 	defer cancel()
@@ -62,10 +62,12 @@ func runBrowse(ctx context.Context, service, domain string, cache *Cache, fetchT
 			handleEntry(ctx, entry, cache, fetchTimeout)
 		}
 	}()
+	// Browse 同步阻塞直到 browCtx 结束；启动失败（网络异常等）立即返回，
+	// 交由 browseLoop 稍后重试，避免空等满一个 browseInterval。
 	if err := resolver.Browse(browCtx, service, domain, entries); err != nil {
 		log.Printf("mDNS 监听失败: %v", err)
+		return false
 	}
-	<-browCtx.Done()
 	return true
 }
 
@@ -98,13 +100,9 @@ func heartbeatLoop(ctx context.Context, cache *Cache, interval, timeout time.Dur
 
 // probePeer 直连探测一个已知节点的存活：GET /api/node 成功即认为在线。
 func probePeer(ctx context.Context, p model.PeerInfo, timeout time.Duration) error {
-	addr := p.Node.ListenAddr
-	if addr == "" {
-		addr = fmt.Sprintf("%s:%d", p.Node.IP, 8080)
-	}
 	client := &http.Client{Timeout: timeout}
 	var node model.NodeInfo
-	return getJSON(ctx, client, "http://"+addr+"/api/node", &node)
+	return getJSON(ctx, client, "http://"+peerAddr(&p)+"/api/node", &node)
 }
 
 // handleEntry 处理一个 mDNS 服务条目，抓取节点详情后写入缓存。

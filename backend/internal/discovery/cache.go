@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,6 +10,18 @@ import (
 
 // offlineTimeout 超过该时长未刷新则标记为离线。
 const offlineTimeout = 60 * time.Second
+
+// defaultPort 节点未上报 ListenAddr 时的回退端口（与后端默认监听端口一致）。
+const defaultPort = 8080
+
+// peerAddr 返回节点的 API 基地址（host:port）：
+// 优先使用节点上报的 ListenAddr，缺失时回退到 IP + 默认端口。
+func peerAddr(p *model.PeerInfo) string {
+	if p.Node.ListenAddr != "" {
+		return p.Node.ListenAddr
+	}
+	return fmt.Sprintf("%s:%d", p.Node.IP, defaultPort)
+}
 
 // Cache 缓存 mDNS 发现的其他节点。
 type Cache struct {

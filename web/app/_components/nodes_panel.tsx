@@ -4,9 +4,7 @@ import React, {useEffect, useState} from 'react';
 import {Alert, Empty, Spin} from 'antd';
 import HostCard, {type HostInfo} from '../_cards/host_card';
 import {fetchNode, fetchPeers, type ApiFolderInfo, type ApiNodeInfo, type ApiPeerInfo} from '../_lib/api';
-
-/** 节点列表定时刷新间隔（毫秒）：远小于后端离线超时（60s），节点上下线及时可见 */
-const PEER_REFRESH_INTERVAL = 10 * 1000;
+import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
 function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {

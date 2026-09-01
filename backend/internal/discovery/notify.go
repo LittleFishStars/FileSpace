@@ -42,17 +42,13 @@ func NotifyExit(ctx context.Context, cache *Cache, selfID string, timeout time.D
 
 // sendGoodbye 向单个节点发送退出通知（POST /api/peers/goodbye）。
 func sendGoodbye(ctx context.Context, p *model.PeerInfo, selfID string, timeout time.Duration) error {
-	addr := p.Node.ListenAddr
-	if addr == "" {
-		addr = fmt.Sprintf("%s:%d", p.Node.IP, 8080)
-	}
 	body, err := json.Marshal(map[string]string{"id": selfID})
 	if err != nil {
 		return err
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, "http://"+addr+goodbyePath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, "http://"+peerAddr(p)+goodbyePath, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
