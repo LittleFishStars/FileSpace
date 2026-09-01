@@ -41,6 +41,15 @@ func (c *Cache) UpsertPeer(p *model.PeerInfo) {
 	c.lastSeen[p.Node.ID] = now
 }
 
+// Remove 移除指定节点（收到对方退出通知时调用，立即从在线列表消失，
+// 无需等待 offlineTimeout 超时）。
+func (c *Cache) Remove(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.peers, id)
+	delete(c.lastSeen, id)
+}
+
 // Touch 记录一次成功的活跃探测（HTTP 心跳），刷新该节点的在线时间戳。
 // 仅对已知节点生效；探测失败不应调用，让 lastSeen 自然过期以标记离线。
 func (c *Cache) Touch(id string) {

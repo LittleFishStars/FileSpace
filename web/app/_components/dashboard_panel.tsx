@@ -23,6 +23,9 @@ import {
   type ApiPeerInfo,
 } from '../_lib/api';
 
+/** 节点列表定时刷新间隔（毫秒）：远小于后端离线超时（60s），节点上下线及时可见 */
+const PEER_REFRESH_INTERVAL = 10 * 1000;
+
 /**
  * 主界面（/）：FileSpace 总览页。
  * 展示品牌（logo + 标题 + 软件版本）与全局统计：
@@ -54,9 +57,21 @@ export default function DashboardPanel() {
                 if (!cancelled) setError(e instanceof Error ? e.message : '无法连接后端服务');
             }
         }
+        // 定时刷新节点列表：节点上线/退出（含收到退出通知）后在线数即时更新，
+        // 无需手动刷新页面。
+        async function refreshPeers() {
+            try {
+                const ps = await fetchPeers();
+                if (!cancelled) setPeers(ps);
+            } catch {
+                // 轮询失败保持现有数据，等待下一次
+            }
+        }
         load();
+        const timer = setInterval(refreshPeers, PEER_REFRESH_INTERVAL);
         return () => {
             cancelled = true;
+            clearInterval(timer);
         };
     }, []);
 

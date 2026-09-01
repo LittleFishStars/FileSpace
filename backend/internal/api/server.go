@@ -61,6 +61,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/folders/{id}/download", s.handleDownload)
 	mux.HandleFunc("POST /api/folders/{id}/open", s.handleOpenFile)
 	mux.HandleFunc("GET /api/peers", s.handlePeers)
+	mux.HandleFunc("POST /api/peers/goodbye", s.handlePeerGoodbye)
 	return mux
 }
 
