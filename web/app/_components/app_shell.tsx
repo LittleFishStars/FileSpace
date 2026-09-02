@@ -1,6 +1,6 @@
 'use client'
 
-import React, {useEffect, useState, useSyncExternalStore} from 'react';
+import React, {useSyncExternalStore} from 'react';
 import {Breadcrumb, Segmented} from 'antd';
 import {DesktopOutlined, MoonOutlined, SunOutlined} from '@ant-design/icons';
 import Link from 'next/link';
@@ -8,7 +8,7 @@ import {usePathname, useRouter} from 'next/navigation';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
 import BrandMark from './brand_mark';
 import {useTheme, type ThemeMode} from './app_theme';
-import {fetchNode} from '../_lib/api';
+import {useAccess} from './access_context';
 
 /**
  * 客户端挂载检测：服务端水合前为 false，客户端挂载后为 true。
@@ -79,23 +79,9 @@ export default function AppShell({
     const {mode, setMode} = useTheme();
     const router = useRouter();
     const pathname = usePathname();
-    // 是否本机（回环）访问：远程访问时隐藏「本机节点」菜单，默认按本机访问渲染，
-    // 加载 /api/node 后再按实际访问来源修正。
-    const [isLocalAccess, setIsLocalAccess] = useState(true);
-
-    useEffect(() => {
-        let cancelled = false;
-        fetchNode()
-            .then((node) => {
-                if (!cancelled) setIsLocalAccess(node.local !== false);
-            })
-            .catch(() => {
-                // 拉取失败保持默认（本机访问视图），不影响页面主体功能
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    // 是否本机（回环）访问：远程访问时隐藏「本机节点」菜单。
+    // 访问来源由 AccessProvider 统一拉取 /api/node；未加载完成前按本机访问渲染（默认）。
+    const {isLocalAccess} = useAccess();
 
     // 挂载前渲染占位，避免服务端渲染 ProLayout。
     if (!mounted) {
@@ -122,7 +108,7 @@ export default function AppShell({
             title="文件空间"
             logo={<BrandMark className="h-7 w-7"/>}
             layout="top"
-            route={buildMenu(isLocalAccess)}
+            route={buildMenu(isLocalAccess !== false)}
             location={{pathname: menuActivePath ?? pathname}}
             onMenuHeaderClick={() => router.push('/')}
             menuItemRender={(item, dom) => <Link href={item.path ?? '/'}>{dom}</Link>}
