@@ -67,11 +67,18 @@ export default function DashboardPanel() {
                 // 轮询失败保持现有数据，等待下一次
             }
         }
+        // 页面从后台切回前台时立即刷新：浏览器会对后台标签页的定时器节流，
+        // 切回时可能带着过期数据，补拉一次让在线统计即时更新。
+        function onVisible() {
+            if (document.visibilityState === 'visible') refreshPeers();
+        }
         load();
         const timer = setInterval(refreshPeers, PEER_REFRESH_INTERVAL);
+        document.addEventListener('visibilitychange', onVisible);
         return () => {
             cancelled = true;
             clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVisible);
         };
     }, [node]);
 
