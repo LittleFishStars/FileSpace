@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"path/filepath"
+	"strings"
 )
 
 // handleDownload 下载共享目录内的文件（?path=相对路径，支持 Range 断点续传）。
@@ -18,6 +20,64 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		writeFolderError(w, err)
 		return
 	}
-	// http.ServeFile 自动处理 Range、Content-Disposition 等。
+	// 显式设置 Content-Disposition：下载 URL 以 /api/folders/{id}/download?path=... 结尾，
+	// 没有文件名段，http.ServeFile 也不会设置该头；缺省时浏览器无法解析文件名，
+	// 远程下载会回退为占位名 unresolved-filename，二进制文件还会被命名为 .bin。
+	setDownloadDisposition(w, filepath.Base(full))
+	// http.ServeFile 自动处理 Range、Content-Type 等。
 	http.ServeFile(w, r, full)
+}
+
+// setDownloadDisposition 设置 attachment 下载头：filename 为 ASCII 兜底
+// （兼容不认 filename* 的旧客户端），filename*（RFC 5987 / RFC 6266）
+// 携带原始文件名，支持中文等非 ASCII 文件名。
+func setDownloadDisposition(w http.ResponseWriter, name string) {
+	disposition := `attachment; filename="` + sanitizeASCII(name) + `"`
+	if !isASCII(name) {
+		disposition += "; filename*=UTF-8''" + encodeRFC5987(name)
+	}
+	w.Header().Set("Content-Disposition", disposition)
+}
+
+// sanitizeASCII 生成可放进引号内的 ASCII 兜底文件名：
+// 非 ASCII 字符与控制字符（含引号、反斜杠、分号等头注入风险字符）替换为 _。
+func sanitizeASCII(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r >= 0x20 && r < 0x7f && r != '"' && r != '\\' && r != ';' && r != ',' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
+// isASCII 判断字符串是否全部为 ASCII 字节。
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// encodeRFC5987 按 RFC 5987 attr-char 白名单做百分号编码，
+// 供 filename* 参数携带原始文件名。
+func encodeRFC5987(name string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			strings.ContainsRune("!#$&+-.^_`|~", rune(c)) {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&0xf])
+		}
+	}
+	return b.String()
 }
