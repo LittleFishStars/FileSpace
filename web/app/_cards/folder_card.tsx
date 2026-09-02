@@ -43,6 +43,7 @@ export default function FolderCard({
   folder: FolderInfo
   className?: string
 }) {
+  // 全量统计：文件数与总大小由后端后台扫描缓存（目录较大时首次显示可能有短暂延迟）
   const stats = [
     { label: '文件', value: String(folder.fileCount ?? 0) },
     { label: '总大小', value: formatSize(folder.totalSize) },

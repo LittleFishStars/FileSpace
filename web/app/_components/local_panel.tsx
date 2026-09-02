@@ -18,12 +18,12 @@ import type {ColumnsType} from 'antd/es/table';
 import {
     CloudServerOutlined,
     DeleteOutlined,
-    EyeOutlined,
     FolderAddOutlined,
     FolderOpenOutlined,
     LockOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
+import {useRouter} from 'next/navigation';
 import {ProCard} from '@ant-design/pro-components';
 import NodeInfoCard from '../_cards/node_info_card';
 import {useAccess} from './access_context';
@@ -53,6 +53,8 @@ function formatTime(iso: string): string {
 
 export default function LocalPanel() {
     const {message} = AntdApp.useApp();
+    // 点击文件夹行直接进入浏览页（与局域网节点文件夹卡片点击打开的行为一致）
+    const router = useRouter();
     // 本机节点信息由 AccessProvider 统一提供（含访问来源 local 标记）
     const {node, status: nodeStatus} = useAccess();
     const [folders, setFolders] = useState<ApiFolderInfo[] | null>(null);
@@ -76,12 +78,19 @@ export default function LocalPanel() {
         // 节点信息未就绪（加载中 / 拉取失败）时保持加载态，由 AccessProvider 状态兜底
         if (!node) return;
         let cancelled = false;
+        // 统计缓存未就绪时的延迟刷新计时器（大目录后台扫描中，先显示 0 值再补拉真实统计）
+        let refreshTimer: number | undefined;
         async function load() {
             try {
                 const fs = await fetchFolders();
                 if (cancelled) return;
                 setFolders(fs);
                 setError(null);
+                // 全部文件夹统计均为 0 且列表非空：统计缓存可能尚未就绪（后台扫描中），
+                // 延迟数秒再拉一次，让文件数/总大小显示真实值（目录确为空的文件夹多拉一次也无碍）
+                if (fs.length > 0 && fs.every((f) => f.fileCount === 0 && f.totalSize === 0)) {
+                    refreshTimer = window.setTimeout(() => setRefresh((r) => r + 1), 2500);
+                }
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
             }
@@ -89,6 +98,7 @@ export default function LocalPanel() {
         load();
         return () => {
             cancelled = true;
+            if (refreshTimer) window.clearTimeout(refreshTimer);
         };
     }, [node, refresh]);
 
@@ -181,7 +191,9 @@ export default function LocalPanel() {
             render: (_, record) => (
                 <span className="flex items-center gap-2">
                     <FolderOpenOutlined className="text-amber-500"/>
-                    <span className="font-medium">{record.name}</span>
+                    <span className="font-medium transition-colors duration-150 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                        {record.name}
+                    </span>
                     {record.auth && (
                         <Tooltip title="该文件夹设置了访问密码，其他节点需输入密码才能访问">
                             <LockOutlined className="text-amber-500 dark:text-amber-400"/>
@@ -202,14 +214,22 @@ export default function LocalPanel() {
             ),
         },
         {
-            title: '文件数',
+            title: (
+                <Tooltip title="后台统计该文件夹全部文件的实时总数，目录较大时首次加载可能有短暂延迟">
+                    <span>文件数</span>
+                </Tooltip>
+            ),
             dataIndex: 'fileCount',
             key: 'fileCount',
             width: 90,
             align: 'right' as const,
         },
         {
-            title: '总大小',
+            title: (
+                <Tooltip title="后台统计该文件夹全部文件的总大小，目录较大时首次加载可能有短暂延迟">
+                    <span>总大小</span>
+                </Tooltip>
+            ),
             dataIndex: 'totalSize',
             key: 'totalSize',
             width: 110,
@@ -226,14 +246,10 @@ export default function LocalPanel() {
         {
             title: '操作',
             key: 'action',
-            width: 140,
+            width: 90,
             render: (_, record) => (
-                <div className="flex items-center gap-1">
-                    <Link href={`/folders?folderId=${record.id}`}>
-                        <Button type="link" size="small" icon={<EyeOutlined/>}>
-                            浏览
-                        </Button>
-                    </Link>
+                // 点击行 = 打开文件夹浏览页；操作按钮（删除）需阻止冒泡避免误跳转
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Popconfirm
                         title="移除共享文件夹"
                         description={`确定不再共享「${record.name}」吗？`}
@@ -345,6 +361,11 @@ export default function LocalPanel() {
                             columns={columns}
                             dataSource={folders}
                             pagination={false}
+                            // 点击整行打开该文件夹的浏览页（不再需要「操作」列里的浏览按钮）
+                            onRow={(record) => ({
+                                className: 'group cursor-pointer',
+                                onClick: () => router.push(`/folders?folderId=${record.id}`),
+                            })}
                         />
                     )}
                 </ProCard>
