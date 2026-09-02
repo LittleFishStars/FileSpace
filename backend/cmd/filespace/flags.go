@@ -10,6 +10,7 @@ type options struct {
 	configPath string
 	port       int
 	passwd     string // -P/--passwd：共享访问密码
+	hasPasswd  bool   // 是否显式给出了 -P/--passwd（含空值，空值表示移除密码）
 	addCwd     bool   // -a/--add：在解析出的共享目录之外额外共享当前目录
 	thisOnly   bool   // --this：仅共享当前目录
 	web        bool   // --web：同时启动前端界面（静态导出）并在浏览器中打开
@@ -33,6 +34,12 @@ func parseFlags() (*options, []string) {
 	flag.BoolVar(&opts.thisOnly, "this", false, "仅共享当前目录")
 	flag.BoolVar(&opts.web, "web", false, "同时启动前端界面并在浏览器中打开")
 	flag.Parse()
+	// 检测是否显式给出 -P/--passwd：空值（-P ''）表示「移除密码」，需与「未提供」区分
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "passwd" || f.Name == "P" {
+			opts.hasPasswd = true
+		}
+	})
 	return opts, flag.Args()
 }
 
@@ -52,8 +59,12 @@ func usage() {
   --web                   同时启动前端界面并在浏览器中打开（默认只启动后端 API）
   -c, --config <文件>     配置文件路径（YAML）
   -p, --port <端口>       监听端口（默认 8080）
-  -P, --passwd <密码>     设置共享访问密码（默认密码）：应用于本次共享的文件夹（未显式设置密码的），
-                          其他节点需输入密码才能查看/下载；本机不受影响。也可在 web 端添加共享时按文件夹单独设置
+  -P, --passwd <密码>     访问密码。两种情形：
+                           · 本进程作为后端启动时：作为默认密码，应用于本次共享的文件夹
+                             （未显式设置密码的），其他节点需输入密码才能查看/下载；本机不受影响
+                           · 已有后端在运行时：需与目录参数配合，修改该目录的访问密码
+                             （传空值 -P '' 表示移除密码）；目录未共享时按「新增共享并设密码」处理
+                           也可在 web 端添加/管理共享时按文件夹单独设置密码
   -h, --help              显示本帮助信息
 
 命令:
@@ -68,8 +79,10 @@ func usage() {
   filespace ~/docs /mnt/data       共享多个目录
   filespace -c config.yaml         使用配置文件
   filespace -P secret -a           设置共享访问密码，并额外共享当前目录
+  filespace ~/docs -P newpass      已有后端运行时：修改共享目录 ~/docs 的访问密码
+  filespace ~/docs -P ''           已有后端运行时：移除 ~/docs 的访问密码（恢复开放）
 
 配置优先级: 命令行 -p > 配置文件 > 默认值; 目录参数覆盖配置文件中的 shared_folders; 两者都未指定时恢复上次退出前共享的目录，-a 可在任何情况下额外共享当前目录，--this 可仅共享当前目录。
-检测到本机已有 filespace 后端在运行时（含运行在其他端口），本进程仅支持用目录参数或 -a 追加，把目录交给已运行的后端后自动退出。
+检测到本机已有 filespace 后端在运行时（含运行在其他端口），本进程仅支持用目录参数或 -a 追加、或与 -P 配合修改目录密码，把操作交给已运行的后端后自动退出。
 `)
 }

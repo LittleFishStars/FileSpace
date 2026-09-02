@@ -314,6 +314,37 @@ func (m *Manager) scanAsync(id string) {
 	}
 }
 
+// FolderPasswd 加锁读取共享目录的访问密码（供认证校验使用，避免与运行中修改竞态）。
+func (m *Manager) FolderPasswd(id string) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.folders {
+		if m.folders[i].ID == id {
+			return m.folders[i].Passwd, true
+		}
+	}
+	return "", false
+}
+
+// SetPassword 修改共享目录的访问密码（password 为空表示移除密码、恢复开放）。
+// 按路径匹配：精确路径或符号链接解析后的真实路径相同即命中；未共享返回 ErrFolderNotFound。
+func (m *Manager) SetPassword(path, password string) (Folder, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return Folder{}, err
+	}
+	real := realPath(abs)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.folders {
+		if m.folders[i].Path == abs || (m.folders[i].RealPath != "" && m.folders[i].RealPath == real) {
+			m.folders[i].Passwd = password
+			return m.folders[i], nil
+		}
+	}
+	return Folder{}, ErrFolderNotFound
+}
+
 // Resolve 按 ID 查找共享目录。
 func (m *Manager) Resolve(id string) (*Folder, bool) {
 	m.mu.RLock()

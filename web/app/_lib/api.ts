@@ -101,6 +101,10 @@ export const addFolders = (paths: string[], password = '') =>
 export const removeFolder = (id: string) =>
     postJSON<{removed: string}>('/api/folders/remove', {id}).then((r) => r.removed)
 
+/** 修改/移除本机共享文件夹的访问密码（password 为空表示移除密码、恢复开放；仅本机调用生效） */
+export const setFolderPassword = (path: string, password: string) =>
+    postJSON<{updated: string; name: string; auth: boolean}>('/api/folders/password', {path, password})
+
 /**
  * 调用后端在本机弹出系统原生目录选择对话框（仅本机回环调用生效），
  * 返回所选目录的绝对路径；cancelled 表示用户取消了选择。

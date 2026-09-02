@@ -82,6 +82,40 @@ func (s *Server) handleRemoveFolder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"removed": req.ID})
 }
 
+// setPasswordRequest 修改共享文件夹访问密码的请求体。
+type setPasswordRequest struct {
+	// Path 目标文件夹的绝对路径（后端按精确路径或真实路径匹配）。
+	Path string `json:"path"`
+	// Password 新访问密码：为空表示移除密码（该文件夹恢复开放）。
+	Password string `json:"password"`
+}
+
+// handleSetFolderPassword 修改本机共享文件夹的访问密码（仅允许本机调用，
+// 与添加/移除共享目录同等安全约束）。
+// password 为空表示移除密码：文件夹恢复开放，此前签发的访问令牌自动失效
+// （令牌绑定密码哈希，移除后授权路径不再校验）。
+func (s *Server) handleSetFolderPassword(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "仅允许本机调用")
+		return
+	}
+	var req setPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+		return
+	}
+	if req.Path == "" {
+		writeError(w, http.StatusBadRequest, "path 不能为空")
+		return
+	}
+	f, err := s.folders.SetPassword(req.Path, req.Password)
+	if err != nil {
+		writeFolderError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"updated": f.ID, "name": f.Name, "auth": f.Passwd != ""})
+}
+
 // isLoopbackRequest 判断请求是否来自本机（回环地址 127.0.0.1 / ::1）。
 func isLoopbackRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

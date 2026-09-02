@@ -127,16 +127,16 @@ func (s *Server) authorized(r *http.Request, folderID string) bool {
 	if isLoopbackRequest(r) {
 		return true
 	}
-	folder, ok := s.folders.Resolve(folderID)
-	if !ok {
+	if _, ok := s.folders.Resolve(folderID); !ok {
 		return true // 文件夹不存在由业务逻辑返回 404
 	}
-	if folder.Passwd == "" {
-		return true // 该文件夹未设置密码，开放访问
+	passwd, _ := s.folders.FolderPasswd(folderID)
+	if passwd == "" {
+		return true // 该文件夹未设置密码（或密码已被移除），开放访问
 	}
 	token := bearerToken(r)
 	if token == "" {
 		token = r.URL.Query().Get("token")
 	}
-	return s.auth.valid(token, sha256.Sum256([]byte(folder.Passwd)))
+	return s.auth.valid(token, sha256.Sum256([]byte(passwd)))
 }
