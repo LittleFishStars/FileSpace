@@ -8,6 +8,7 @@ import {usePathname, useRouter} from 'next/navigation';
 import {PageContainer, ProLayout} from '@ant-design/pro-components';
 import BrandMark from './brand_mark';
 import {useTheme, type ThemeMode} from './app_theme';
+import {useAccess} from './access_context';
 
 /**
  * 客户端挂载检测：服务端水合前为 false，客户端挂载后为 true。
@@ -39,14 +40,16 @@ const THEME_OPTIONS = [
     {label: '深色', value: 'dark' as ThemeMode, icon: <MoonOutlined/>},
 ];
 
-/** 顶部导航菜单：局域网节点（/nodes）与本机节点（/local），所有页面顶栏可见、可随时切换 */
-const TOP_MENU = {
-    path: '/',
-    routes: [
-        {path: '/nodes', name: '局域网节点'},
-        {path: '/local', name: '本机节点'},
-    ],
-};
+/** 顶部导航菜单路由模板：远程访问时隐藏「本机节点」（本机节点按局域网节点展示） */
+function buildMenu(isLocalAccess: boolean) {
+    return {
+        path: '/',
+        routes: [
+            {path: '/nodes', name: '局域网节点'},
+            ...(isLocalAccess ? [{path: '/local', name: '本机节点'}] : []),
+        ],
+    };
+}
 
 /**
  * 应用外壳：ProLayout 顶部导航模式。
@@ -76,6 +79,9 @@ export default function AppShell({
     const {mode, setMode} = useTheme();
     const router = useRouter();
     const pathname = usePathname();
+    // 是否本机（回环）访问：远程访问时隐藏「本机节点」菜单。
+    // 访问来源由 AccessProvider 统一拉取 /api/node；未加载完成前按本机访问渲染（默认）。
+    const {isLocalAccess} = useAccess();
 
     // 挂载前渲染占位，避免服务端渲染 ProLayout。
     if (!mounted) {
@@ -102,7 +108,7 @@ export default function AppShell({
             title="文件空间"
             logo={<BrandMark className="h-7 w-7"/>}
             layout="top"
-            route={TOP_MENU}
+            route={buildMenu(isLocalAccess !== false)}
             location={{pathname: menuActivePath ?? pathname}}
             onMenuHeaderClick={() => router.push('/')}
             menuItemRender={(item, dom) => <Link href={item.path ?? '/'}>{dom}</Link>}

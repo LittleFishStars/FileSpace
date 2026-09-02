@@ -13,13 +13,13 @@ import Link from 'next/link';
 import {ProCard} from '@ant-design/pro-components';
 import BrandMark from './brand_mark';
 import {useTheme} from './app_theme';
+import {useAccess} from './access_context';
 import {formatSize} from '../_cards/folder_card';
+import {excludeSelfPeers} from '../_lib/nodes';
 import {
   fetchFolders,
-  fetchNode,
   fetchPeers,
   type ApiFolderInfo,
-  type ApiNodeInfo,
   type ApiPeerInfo,
 } from '../_lib/api';
 import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
@@ -28,29 +28,31 @@ import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
  * 主界面（/）：FileSpace 总览页。
  * 展示品牌（logo + 标题 + 软件版本）与全局统计：
  * 在线节点数（本机 + mDNS 发现的在线节点）、共享的总文件夹数、共享的总文件大小，
- * 并提供进入局域网节点 / 本机节点管理的快捷入口。
+ * 并提供进入局域网节点 / 本机节点管理的快捷入口（远程访问时隐藏本机管理入口）。
  */
 
 export default function DashboardPanel() {
     const {isDark, setMode} = useTheme();
-    const [node, setNode] = useState<ApiNodeInfo | null>(null);
+    // 本机节点信息由 AccessProvider 统一提供（含访问来源 local 标记）
+    const {node, status: nodeStatus} = useAccess();
     const [localFolders, setLocalFolders] = useState<ApiFolderInfo[] | null>(null);
     const [peers, setPeers] = useState<ApiPeerInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        // 节点信息未就绪（加载中 / 拉取失败）时保持加载态，由 AccessProvider 状态兜底
+        if (!node) return;
         let cancelled = false;
         async function load() {
             try {
-                const [n, fs, ps] = await Promise.all([
-                    fetchNode(),
+                const [fs, ps] = await Promise.all([
                     fetchFolders(),
                     fetchPeers(),
                 ]);
                 if (cancelled) return;
-                setNode(n);
                 setLocalFolders(fs);
                 setPeers(ps);
+                setError(null);
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '无法连接后端服务');
             }
@@ -65,18 +67,25 @@ export default function DashboardPanel() {
                 // 轮询失败保持现有数据，等待下一次
             }
         }
+        // 页面从后台切回前台时立即刷新：浏览器会对后台标签页的定时器节流，
+        // 切回时可能带着过期数据，补拉一次让在线统计即时更新。
+        function onVisible() {
+            if (document.visibilityState === 'visible') refreshPeers();
+        }
         load();
         const timer = setInterval(refreshPeers, PEER_REFRESH_INTERVAL);
+        document.addEventListener('visibilitychange', onVisible);
         return () => {
             cancelled = true;
             clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVisible);
         };
-    }, []);
+    }, [node]);
 
     // 统计口径：
     // - 在线节点数 = 本机（恒在线）+ mDNS 发现的在线节点（排除本机，防重复计数）。
     // - 共享文件夹数 / 总文件大小 = 本机共享 + 全部可见节点（含离线节点的缓存数据）。
-    const remotePeers = peers?.filter((p) => p.node.id !== node?.id) ?? [];
+    const remotePeers = node && peers ? excludeSelfPeers(peers, node.id) : [];
     const onlineNodes = 1 + remotePeers.filter((p) => p.online).length;
     const peerFolders = remotePeers.flatMap((p: ApiPeerInfo) => p.folders);
     const totalFolders = (localFolders?.length ?? 0) + peerFolders.length;
@@ -87,7 +96,10 @@ export default function DashboardPanel() {
     let content: React.ReactNode;
     if (error) {
         content = <Alert type="error" showIcon title="加载失败" description={error}/>;
-    } else if (node === null || localFolders === null || peers === null) {
+    } else if (nodeStatus === 'error') {
+        // AccessProvider 拉取本机信息失败
+        content = <Alert type="error" showIcon title="加载失败" description="无法连接后端服务"/>;
+    } else if (nodeStatus === 'loading' || node === null || localFolders === null || peers === null) {
         content = (
             <div className="flex justify-center py-16">
                 <Spin size="large"/>
@@ -174,11 +186,14 @@ export default function DashboardPanel() {
                             浏览局域网节点
                         </Button>
                     </Link>
-                    <Link href="/local">
-                        <Button size="large" icon={<SettingOutlined/>}>
-                            管理本机共享
-                        </Button>
-                    </Link>
+                    {/* 远程访问时本机节点按局域网节点展示，本机共享管理仅限本机回环操作 */}
+                    {node.local !== false && (
+                        <Link href="/local">
+                            <Button size="large" icon={<SettingOutlined/>}>
+                                管理本机共享
+                            </Button>
+                        </Link>
+                    )}
                 </div>
             </div>
         );

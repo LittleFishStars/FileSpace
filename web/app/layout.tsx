@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppTheme from "./_components/app_theme";
+import {AccessProvider} from "./_components/access_context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +32,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AppTheme>{children}</AppTheme>
+        <AppTheme>
+          {/* 全局访问来源（本机/远程）上下文：顶层统一拉取一次 /api/node */}
+          <AccessProvider>{children}</AccessProvider>
+        </AppTheme>
       </body>
     </html>
   );

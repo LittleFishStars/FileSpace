@@ -26,15 +26,14 @@ import {
 import Link from 'next/link';
 import {ProCard} from '@ant-design/pro-components';
 import NodeInfoCard from '../_cards/node_info_card';
+import {useAccess} from './access_context';
 import {formatSize} from '../_cards/folder_card';
 import {
     addFolders,
     fetchFolders,
-    fetchNode,
     pickDirectory,
     removeFolder,
     type ApiFolderInfo,
-    type ApiNodeInfo,
 } from '../_lib/api';
 
 /**
@@ -54,7 +53,8 @@ function formatTime(iso: string): string {
 
 export default function LocalPanel() {
     const {message} = AntdApp.useApp();
-    const [node, setNode] = useState<ApiNodeInfo | null>(null);
+    // 本机节点信息由 AccessProvider 统一提供（含访问来源 local 标记）
+    const {node, status: nodeStatus} = useAccess();
     const [folders, setFolders] = useState<ApiFolderInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -73,12 +73,13 @@ export default function LocalPanel() {
     const [refresh, setRefresh] = useState(0);
 
     useEffect(() => {
+        // 节点信息未就绪（加载中 / 拉取失败）时保持加载态，由 AccessProvider 状态兜底
+        if (!node) return;
         let cancelled = false;
         async function load() {
             try {
-                const [n, fs] = await Promise.all([fetchNode(), fetchFolders()]);
+                const fs = await fetchFolders();
                 if (cancelled) return;
-                setNode(n);
                 setFolders(fs);
                 setError(null);
             } catch (e) {
@@ -89,7 +90,7 @@ export default function LocalPanel() {
         return () => {
             cancelled = true;
         };
-    }, [refresh]);
+    }, [node, refresh]);
 
     /**
      * 添加共享文件夹：优先调用后端在本机弹出系统原生目录选择器，选中后询问是否设置访问密码；
@@ -259,11 +260,32 @@ export default function LocalPanel() {
     let content: React.ReactNode;
     if (error) {
         content = <Alert type="error" showIcon title="加载失败" description={error}/>;
-    } else if (node === null || folders === null) {
+    } else if (nodeStatus === 'error') {
+        // AccessProvider 拉取本机信息失败
+        content = <Alert type="error" showIcon title="加载失败" description="无法连接后端服务"/>;
+    } else if (nodeStatus === 'loading' || node === null || folders === null) {
         content = (
             <div className="flex justify-center py-16">
                 <Spin size="large"/>
             </div>
+        );
+    } else if (node.local === false) {
+        // 远程访问守卫：本机共享管理仅限本机回环操作（添加/删除接口后端强制校验），
+        // 远程访问时本机节点已作为局域网节点展示，引导前往局域网节点页浏览。
+        content = (
+            <Alert
+                type="info"
+                showIcon
+                title="本机共享管理仅限本机访问"
+                description="当前是从其他设备访问，本机节点已作为局域网节点展示，可在「局域网节点」页浏览本机的共享文件夹；添加 / 删除共享文件夹请在本机浏览器中打开本页面操作。"
+                action={
+                    <Link href="/nodes">
+                        <Button type="primary" size="small">
+                            前往局域网节点
+                        </Button>
+                    </Link>
+                }
+            />
         );
     } else {
         content = (

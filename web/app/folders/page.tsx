@@ -26,6 +26,7 @@ import {
 import Link from 'next/link';
 import {useSearchParams} from 'next/navigation';
 import AppShell from '../_components/app_shell';
+import {useAccess} from '../_components/access_context';
 import FilePreview from '../_components/file_preview';
 import {formatSize} from '../_cards/folder_card';
 import {
@@ -33,12 +34,12 @@ import {
   authLogin,
   downloadUrl,
   fetchFolders,
-  fetchNode,
   fetchPeers,
   fetchTree,
   openFile,
   type ApiFileInfo,
   type ApiFolderInfo,
+  type ApiNodeInfo,
 } from '../_lib/api';
 
 /**
@@ -74,6 +75,8 @@ function FolderBrowser() {
     const {message} = AntdApp.useApp();
     const searchParams = useSearchParams();
     const folderId = searchParams.get('folderId') ?? '';
+    // 本机节点信息由 AccessProvider 统一提供（含访问来源 local 标记）
+    const {node, status: nodeStatus} = useAccess();
     const [folder, setFolder] = useState<ApiFolderInfo | null>(null);
     const [hostname, setHostname] = useState('');
     // 是否为本机共享文件夹：本机文件操作为「打开」，远程为「下载 / 预览」
@@ -98,12 +101,13 @@ function FolderBrowser() {
 
     // 加载文件夹信息（名称 / 磁盘路径 / 所属主机名 / 是否本机）
     useEffect(() => {
-        if (!folderId) return;
+        // 节点信息未就绪（加载中 / 拉取失败）时不发起解析，保持加载态由 nodeStatus 兜底
+        if (!folderId || !node) return;
         let cancelled = false;
-        async function load() {
+        // 把 node 作为参数传入异步闭包（避免捕获变量跨 async 的 null 收窄问题）
+        async function load(n: ApiNodeInfo) {
             try {
-                const [node, folders, peers] = await Promise.all([
-                    fetchNode(),
+                const [folders, peers] = await Promise.all([
                     fetchFolders(),
                     fetchPeers(),
                 ]);
@@ -111,9 +115,12 @@ function FolderBrowser() {
                 // 先在本机共享的文件夹中查找，未命中再到 mDNS 发现的节点中查找。
                 // 远端节点上的文件夹需通过该节点自己的后端直连（本地后端不认识其 id）。
                 let found = folders.find((f) => f.id === folderId);
-                let host = node.hostname;
+                let host = n.hostname;
                 let base = '';
-                let local = true;
+                // 仅本机访问（node.local）时，本机共享文件夹才按「本机文件夹」处理：
+                // 远程访问时本机文件夹同样按远程文件夹展示（下载/预览，
+                // 「打开」操作调用本机系统默认应用，仅限本机回环）。
+                let local = n.local !== false;
                 // 该文件夹是否设置了访问密码（按文件夹判断：同一节点不同文件夹密码可能不同）
                 let folderAuth = false;
                 if (!found) {
@@ -156,11 +163,11 @@ function FolderBrowser() {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
             }
         }
-        load();
+        load(node);
         return () => {
             cancelled = true;
         };
-    }, [folderId]);
+    }, [folderId, node]);
 
     // 懒加载当前目录内容
     useEffect(() => {
@@ -363,6 +370,9 @@ function FolderBrowser() {
                 }
             />
         );
+    } else if (nodeStatus === 'error') {
+        // AccessProvider 拉取本机信息失败
+        content = <Alert type="error" showIcon title="加载失败" description="无法连接后端服务"/>;
     } else if (entries === null) {
         content = (
             <div className="flex justify-center py-16">
