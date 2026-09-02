@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +32,12 @@ func newFoldersTestServer(t *testing.T, root string) (*Server, *share.Manager) {
 	return srv, mgr
 }
 
+// sha256Hex 计算明文的 sha256 十六进制（供断言内部只存哈希）。
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
 // setPasswordReq 调用 handleSetFolderPassword 并返回响应记录。
 func setPasswordReq(srv *Server, remoteAddr, path, password string) *httptest.ResponseRecorder {
 	body, _ := json.Marshal(map[string]string{"path": path, "password": password})
@@ -52,20 +60,20 @@ func TestHandleSetFolderPassword(t *testing.T) {
 		t.Fatalf("远程修改密码状态码 = %d，期望 403", w.Code)
 	}
 
-	// 本机设置密码
+	// 本机设置密码：内部存哈希
 	if w := setPasswordReq(srv, "127.0.0.1:54321", root, "secret"); w.Code != http.StatusOK {
 		t.Fatalf("本机设置密码状态码 = %d，期望 200", w.Code)
 	}
-	if pw, _ := mgr.FolderPasswd(id); pw != "secret" {
-		t.Errorf("设置后 FolderPasswd = %q，期望 secret", pw)
+	if pw, _ := mgr.FolderPasswdHash(id); pw != sha256Hex("secret") {
+		t.Errorf("设置后 FolderPasswdHash = %q，期望 %q", pw, sha256Hex("secret"))
 	}
 
 	// 本机移除密码（空值）
 	if w := setPasswordReq(srv, "127.0.0.1:54321", root, ""); w.Code != http.StatusOK {
 		t.Fatalf("本机移除密码状态码 = %d，期望 200", w.Code)
 	}
-	if pw, _ := mgr.FolderPasswd(id); pw != "" {
-		t.Errorf("移除后 FolderPasswd = %q，期望空", pw)
+	if pw, _ := mgr.FolderPasswdHash(id); pw != "" {
+		t.Errorf("移除后 FolderPasswdHash = %q，期望空", pw)
 	}
 
 	// 未共享的目录：404
@@ -75,8 +83,8 @@ func TestHandleSetFolderPassword(t *testing.T) {
 	}
 }
 
-// TestPasswordPersistAndRestore 修改密码经 handler 落盘后，重启（按上次共享记录重建
-// Manager）仍能恢复密码——回归验证"设置密码后重启丢失"问题。
+// TestPasswordPersistAndRestore 修改密码经 handler 落盘（仅存哈希）后，重启（按上次共享
+// 记录重建 Manager）仍能恢复密码——回归验证"设置密码后重启丢失"问题。
 func TestPasswordPersistAndRestore(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
@@ -86,7 +94,16 @@ func TestPasswordPersistAndRestore(t *testing.T) {
 	if w := setPasswordReq(srv, "127.0.0.1:54321", root, "s3cret"); w.Code != http.StatusOK {
 		t.Fatalf("设置密码状态码 = %d，期望 200", w.Code)
 	}
-	// 模拟重启：从上次共享记录重建 Manager，列表应仍带密码标记
+	// 持久化文件不得含明文
+	for _, sf := range state.LoadLastShared() {
+		if sf.Passwd != "" {
+			t.Error("last-shared.yaml 不应保存明文密码")
+		}
+		if sf.PasswdHash != sha256Hex("s3cret") {
+			t.Errorf("持久化 PasswdHash = %q，期望 %q", sf.PasswdHash, sha256Hex("s3cret"))
+		}
+	}
+	// 模拟重启：从上次共享记录重建 Manager，列表应仍带密码标记，且认证可用
 	restored := share.NewManager(state.LoadLastShared())
 	defer restored.Close()
 	found := false
@@ -100,6 +117,9 @@ func TestPasswordPersistAndRestore(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("重启恢复列表中未找到共享目录 %s", root)
+	}
+	if !restored.MatchPassword("s3cret") {
+		t.Error("重启恢复后 MatchPassword(s3cret) 应为 true")
 	}
 }
 

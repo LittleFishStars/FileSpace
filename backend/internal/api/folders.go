@@ -50,7 +50,7 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "追加失败: "+err.Error())
 			return
 		}
-		added = append(added, model.FolderInfo{ID: f.ID, Name: f.Name, Path: f.Path, Auth: f.Passwd != ""})
+		added = append(added, model.FolderInfo{ID: f.ID, Name: f.Name, Path: f.Path, Auth: f.PasswdHash != ""})
 	}
 	s.persistLastShared() // 立即落盘，避免进程被强杀时新增共享（含密码）丢失
 	writeJSON(w, map[string]any{"added": added})
@@ -115,8 +115,8 @@ func (s *Server) handleSetFolderPassword(w http.ResponseWriter, r *http.Request)
 		writeFolderError(w, err)
 		return
 	}
-	s.persistLastShared() // 立即落盘，重启后仍按新密码恢复
-	writeJSON(w, map[string]any{"updated": f.ID, "name": f.Name, "auth": f.Passwd != ""})
+	s.persistLastShared() // 立即落盘（仅存哈希），重启后仍按新密码恢复
+	writeJSON(w, map[string]any{"updated": f.ID, "name": f.Name, "auth": f.PasswdHash != ""})
 }
 
 // isLoopbackRequest 判断请求是否来自本机（回环地址 127.0.0.1 / ::1）。

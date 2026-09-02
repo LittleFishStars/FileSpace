@@ -122,7 +122,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 // authorized 判断请求是否有权访问指定共享文件夹的内容：
 // 回环请求（本机）放行；文件夹未设置密码时放行；
-// 设置了密码时校验访问令牌，且令牌须绑定该文件夹的密码（同密码的文件夹可共用令牌）。
+// 设置了密码时校验访问令牌，且令牌须绑定该文件夹的密码哈希（同密码的文件夹可共用令牌）。
 func (s *Server) authorized(r *http.Request, folderID string) bool {
 	if isLoopbackRequest(r) {
 		return true
@@ -130,13 +130,19 @@ func (s *Server) authorized(r *http.Request, folderID string) bool {
 	if _, ok := s.folders.Resolve(folderID); !ok {
 		return true // 文件夹不存在由业务逻辑返回 404
 	}
-	passwd, _ := s.folders.FolderPasswd(folderID)
-	if passwd == "" {
+	passHashHex, _ := s.folders.FolderPasswdHash(folderID)
+	if passHashHex == "" {
 		return true // 该文件夹未设置密码（或密码已被移除），开放访问
 	}
+	passHash, err := hex.DecodeString(passHashHex)
+	if err != nil || len(passHash) != sha256.Size {
+		return false
+	}
+	var sum [sha256.Size]byte
+	copy(sum[:], passHash)
 	token := bearerToken(r)
 	if token == "" {
 		token = r.URL.Query().Get("token")
 	}
-	return s.auth.valid(token, sha256.Sum256([]byte(passwd)))
+	return s.auth.valid(token, sum)
 }

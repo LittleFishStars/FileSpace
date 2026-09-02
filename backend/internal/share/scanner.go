@@ -33,11 +33,31 @@ type Folder struct {
 	ID   string
 	Name string
 	Path string
-	// Passwd 该文件夹的访问密码：为空表示对局域网开放；
-	// 设置后其他节点需先认证（换取访问令牌）才能查看/下载内容，本机回环访问不受影响。
-	Passwd string
+	// PasswdHash 该文件夹访问密码的 sha256 十六进制哈希：为空表示对局域网开放；
+	// 非空表示其他节点需先认证（换取访问令牌）才能查看/下载内容，本机回环访问不受影响。
+	// 程序内不保存明文密码，设置密码的入口（配置 / CLI / API）统一先哈希再入库。
+	PasswdHash string
 	// RealPath 解析符号链接后的真实路径，仅用于内部去重（识别指向同一目录的重复添加）。
 	RealPath string
+}
+
+// hashPassword 计算访问密码的 sha256 十六进制哈希（空密码返回空串，表示开放）。
+// 认证令牌本就绑定密码哈希（见 api authManager），内部统一存哈希、永不存明文。
+func hashPassword(password string) string {
+	if password == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(sum[:])
+}
+
+// folderPassHash 取共享配置的密码哈希：PasswdHash 优先（持久化/内部表示），
+// 否则对明文 Passwd（配置文件 / 命令行输入）现场哈希，不回存明文。
+func folderPassHash(sf config.SharedFolder) string {
+	if sf.PasswdHash != "" {
+		return sf.PasswdHash
+	}
+	return hashPassword(sf.Passwd)
 }
 
 // folderStats 一个共享目录的全量统计（文件数 / 总大小 / 最近更新）缓存。
@@ -82,11 +102,11 @@ func NewManager(shared []config.SharedFolder) *Manager {
 			name = filepath.Base(sf.Path)
 		}
 		folders = append(folders, Folder{
-			ID:       folderID(sf.Path),
-			Name:     name,
-			Path:     sf.Path,
-			Passwd:   sf.Passwd,
-			RealPath: realPath(sf.Path),
+			ID:         folderID(sf.Path),
+			Name:       name,
+			Path:       sf.Path,
+			PasswdHash: folderPassHash(sf),
+			RealPath:   realPath(sf.Path),
 		})
 	}
 	m := &Manager{folders: folders, stats: make(map[string]*folderStats, len(folders)), debounce: watchDebounce}
@@ -120,7 +140,7 @@ func (m *Manager) Add(path, password string) (Folder, error) {
 			return f, ErrFolderExists
 		}
 	}
-	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs, Passwd: password, RealPath: real}
+	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs, PasswdHash: hashPassword(password), RealPath: real}
 	m.folders = append(m.folders, f)
 	m.mu.Unlock()
 
@@ -140,7 +160,7 @@ func (m *Manager) HasPassword() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for i := range m.folders {
-		if m.folders[i].Passwd != "" {
+		if m.folders[i].PasswdHash != "" {
 			return true
 		}
 	}
@@ -149,18 +169,17 @@ func (m *Manager) HasPassword() bool {
 
 // MatchPassword 判断密码是否匹配任一设置了访问密码的共享文件夹（常量时间比较，不暴露明文）。
 func (m *Manager) MatchPassword(password string) bool {
-	if password == "" {
+	hash := hashPassword(password)
+	if hash == "" {
 		return false
 	}
-	hash := sha256.Sum256([]byte(password))
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for i := range m.folders {
-		if m.folders[i].Passwd == "" {
+		if m.folders[i].PasswdHash == "" {
 			continue
 		}
-		folderHash := sha256.Sum256([]byte(m.folders[i].Passwd))
-		if subtle.ConstantTimeCompare(hash[:], folderHash[:]) == 1 {
+		if subtle.ConstantTimeCompare([]byte(m.folders[i].PasswdHash), []byte(hash)) == 1 {
 			return true
 		}
 	}
@@ -210,9 +229,9 @@ func (m *Manager) SharedSnapshot() []config.SharedFolder {
 	out := make([]config.SharedFolder, 0, len(m.folders))
 	for i := range m.folders {
 		out = append(out, config.SharedFolder{
-			Path:   m.folders[i].Path,
-			Name:   m.folders[i].Name,
-			Passwd: m.folders[i].Passwd,
+			Path:       m.folders[i].Path,
+			Name:       m.folders[i].Name,
+			PasswdHash: m.folders[i].PasswdHash,
 		})
 	}
 	return out
@@ -260,7 +279,7 @@ func (m *Manager) List() []model.FolderInfo {
 			FileCount: count,
 			TotalSize: size,
 			UpdatedAt: updated.Format(time.RFC3339),
-			Auth:      f.Passwd != "",
+			Auth:      f.PasswdHash != "",
 		})
 	}
 	return result
@@ -330,19 +349,20 @@ func (m *Manager) scanAsync(id string) {
 	}
 }
 
-// FolderPasswd 加锁读取共享目录的访问密码（供认证校验使用，避免与运行中修改竞态）。
-func (m *Manager) FolderPasswd(id string) (string, bool) {
+// FolderPasswdHash 加锁读取共享目录访问密码的哈希（供认证校验使用，避免与运行中修改竞态）。
+func (m *Manager) FolderPasswdHash(id string) (string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for i := range m.folders {
 		if m.folders[i].ID == id {
-			return m.folders[i].Passwd, true
+			return m.folders[i].PasswdHash, true
 		}
 	}
 	return "", false
 }
 
-// SetPassword 修改共享目录的访问密码（password 为空表示移除密码、恢复开放）。
+// SetPassword 修改共享目录的访问密码（password 为空表示移除密码、恢复开放），
+// 仅存储其 sha256 哈希，明文不驻留内存也不落盘。
 // 按路径匹配：精确路径或符号链接解析后的真实路径相同即命中；未共享返回 ErrFolderNotFound。
 func (m *Manager) SetPassword(path, password string) (Folder, error) {
 	abs, err := filepath.Abs(path)
@@ -354,7 +374,7 @@ func (m *Manager) SetPassword(path, password string) (Folder, error) {
 	defer m.mu.Unlock()
 	for i := range m.folders {
 		if m.folders[i].Path == abs || (m.folders[i].RealPath != "" && m.folders[i].RealPath == real) {
-			m.folders[i].Passwd = password
+			m.folders[i].PasswdHash = hashPassword(password)
 			return m.folders[i], nil
 		}
 	}

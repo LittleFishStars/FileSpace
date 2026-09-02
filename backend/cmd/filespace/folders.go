@@ -82,14 +82,15 @@ func addCurrentDir(cfg *config.Config, passwd string) {
 	fmt.Printf("已指定 -a，额外共享当前目录: %s\n", cwd)
 }
 
-// applyDefaultPasswd 用默认密码填充未显式设置密码（shared_folders[].passwd 为空）的文件夹，
-// 不覆盖配置文件中为单个文件夹指定的独立密码。
+// applyDefaultPasswd 用默认密码填充未显式设置密码（shared_folders[].passwd 与
+// passwd_hash 均为空）的文件夹，不覆盖配置文件中为单个文件夹指定的独立密码
+// （含其哈希表示，如恢复的上次共享记录）；明文密码由 NewManager 统一转哈希。
 func applyDefaultPasswd(cfg *config.Config, passwd string) {
 	if passwd == "" {
 		return
 	}
 	for i := range cfg.Shared {
-		if cfg.Shared[i].Passwd == "" {
+		if cfg.Shared[i].Passwd == "" && cfg.Shared[i].PasswdHash == "" {
 			cfg.Shared[i].Passwd = passwd
 		}
 	}
