@@ -12,6 +12,7 @@ import (
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
+	"filespace/internal/state"
 )
 
 // newFoldersTestServer 构造带共享目录的测试 Server。
@@ -41,6 +42,7 @@ func setPasswordReq(srv *Server, remoteAddr, path, password string) *httptest.Re
 
 // TestHandleSetFolderPassword 修改密码接口：本机放行（设置/修改/移除），远程拒绝 403。
 func TestHandleSetFolderPassword(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // 变更后即时落盘写临时目录，避免污染真实配置
 	root := t.TempDir()
 	srv, mgr := newFoldersTestServer(t, root)
 	id := folderIDOf(t, mgr, root)
@@ -70,6 +72,34 @@ func TestHandleSetFolderPassword(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope")
 	if w := setPasswordReq(srv, "127.0.0.1:54321", missing, "secret"); w.Code != http.StatusNotFound {
 		t.Fatalf("未共享目录状态码 = %d，期望 404", w.Code)
+	}
+}
+
+// TestPasswordPersistAndRestore 修改密码经 handler 落盘后，重启（按上次共享记录重建
+// Manager）仍能恢复密码——回归验证"设置密码后重启丢失"问题。
+func TestPasswordPersistAndRestore(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	srv, _ := newFoldersTestServer(t, root)
+
+	// 设置密码（handler 内部立即持久化到 last-shared.yaml）
+	if w := setPasswordReq(srv, "127.0.0.1:54321", root, "s3cret"); w.Code != http.StatusOK {
+		t.Fatalf("设置密码状态码 = %d，期望 200", w.Code)
+	}
+	// 模拟重启：从上次共享记录重建 Manager，列表应仍带密码标记
+	restored := share.NewManager(state.LoadLastShared())
+	defer restored.Close()
+	found := false
+	for _, f := range restored.List() {
+		if f.Path == root {
+			found = true
+			if !f.Auth {
+				t.Error("重启恢复后该文件夹 auth = false，密码未持久化")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("重启恢复列表中未找到共享目录 %s", root)
 	}
 }
 

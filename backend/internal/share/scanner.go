@@ -202,6 +202,22 @@ func (m *Manager) Remove(id string) error {
 	return nil
 }
 
+// SharedSnapshot 返回当前共享目录列表（含访问密码），供持久化「上次共享记录」使用，
+// 使运行中设置/修改的文件夹密码在重启后仍能恢复。
+func (m *Manager) SharedSnapshot() []config.SharedFolder {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]config.SharedFolder, 0, len(m.folders))
+	for i := range m.folders {
+		out = append(out, config.SharedFolder{
+			Path:   m.folders[i].Path,
+			Name:   m.folders[i].Name,
+			Passwd: m.folders[i].Passwd,
+		})
+	}
+	return out
+}
+
 // List 返回共享文件夹列表（含全量统计：文件数 / 总大小 / 最近更新）。
 // 统计来自缓存，由文件变更事件在后台刷新（见 dirWatcher），本方法不主动扫描，
 // 仅兜底两种情况：① 从未扫描过 → 后台补扫；② 目录曾被删除（missing）而现已

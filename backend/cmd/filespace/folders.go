@@ -53,11 +53,17 @@ func sharedFromPaths(paths []string, passwd string) []config.SharedFolder {
 	return shared
 }
 
-// restoreOrCurrent 未指定任何共享目录：优先恢复上次退出前共享的目录，无记录时回退到当前目录。
+// restoreOrCurrent 未指定任何共享目录：优先恢复上次退出前共享的目录（含各自访问密码），
+// 无记录时回退到当前目录。本次 -P/--passwd 作为默认密码仅覆盖恢复记录中未显式设密的文件夹。
 func restoreOrCurrent(cfg *config.Config, passwd string) {
 	if last := state.LoadLastShared(); len(last) > 0 {
-		cfg.Shared = sharedFromPaths(last, passwd)
-		fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(last, ", "))
+		cfg.Shared = last
+		applyDefaultPasswd(cfg, passwd)
+		paths := make([]string, 0, len(last))
+		for _, f := range last {
+			paths = append(paths, f.Path)
+		}
+		fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(paths, ", "))
 		return
 	}
 	cwd, _ := os.Getwd()

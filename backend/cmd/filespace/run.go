@@ -124,16 +124,17 @@ func (a *app) waitAndShutdown() {
 	_ = a.httpSrv.Shutdown(shutdownCtx)
 }
 
-// saveLastShared 记录本次共享的目录（含运行中追加的），供下次未指定目录时恢复。
+// saveLastShared 记录本次共享的目录（含运行中追加/设置的访问密码），
+// 供下次未指定目录时恢复——重启后文件夹的密码不会丢失。
 func saveLastShared(folders *share.Manager) {
-	infos := folders.List()
-	paths := make([]string, 0, len(infos))
-	for _, f := range infos {
-		paths = append(paths, f.Path)
-	}
-	if err := state.SaveLastShared(paths); err != nil {
+	shared := folders.SharedSnapshot()
+	if err := state.SaveLastShared(shared); err != nil {
 		log.Printf("记录共享目录失败: %v", err)
 		return
+	}
+	paths := make([]string, 0, len(shared))
+	for _, f := range shared {
+		paths = append(paths, f.Path)
 	}
 	fmt.Printf("已记录本次共享的目录: %s\n", strings.Join(paths, ", "))
 }

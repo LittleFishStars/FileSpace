@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
+	"filespace/internal/state"
 )
 
 // Options 构建 Server 所需的依赖。
@@ -45,6 +47,15 @@ func NewServer(opts Options) *Server {
 		monitor: opts.Monitor,
 		peers:   opts.Peers,
 		auth:    newAuthManager(),
+	}
+}
+
+// persistLastShared 把当前共享目录（含访问密码）立即写入上次共享记录。
+// 在添加/移除共享、设置/修改/移除密码等运行中变更后调用，使密码与列表在
+// 进程被强杀（无法走优雅退出落盘）时也不会丢失；优雅退出时仍会再写一次兜底。
+func (s *Server) persistLastShared() {
+	if err := state.SaveLastShared(s.folders.SharedSnapshot()); err != nil {
+		log.Printf("记录共享目录失败: %v", err)
 	}
 }
 
