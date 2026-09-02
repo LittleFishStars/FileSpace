@@ -23,7 +23,8 @@ func writeFile(t *testing.T, path string, n int) int64 {
 }
 
 // waitFileCount 通过 List 轮询等待某共享目录的统计 fileCount 达到目标值（超时报错）。
-// List 返回的是加锁保护的快照，且每次调用会触发过期缓存的后台重扫，天然无竞态。
+// List 返回的是加锁保护的快照；目录变化时 List 的目录 mtime 指纹校验会在后台触发
+// 重扫，而轮询间隔（20ms）大于测试设定的短校验节流，每次调用都会做校验，天然无竞态。
 func waitFileCount(t *testing.T, m *Manager, id string, want int, timeout time.Duration) model.FolderInfo {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -64,27 +65,156 @@ func TestScanStatsFullTree(t *testing.T) {
 	}
 }
 
-// TestStatsRefreshAfterTTL 验证缓存过期后 List 触发后台重扫，统计最终更新为新值。
-func TestStatsRefreshAfterTTL(t *testing.T) {
+// TestStatsRefreshOnDirChange 验证目录内容变化（根目录新增文件，根目录 mtime 变化）后，
+// List 的 mtime 指纹校验发现变化并触发后台重扫，统计最终更新为新值。
+func TestStatsRefreshOnDirChange(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "a.txt"), 100)
 	m := NewManager([]config.SharedFolder{{Path: root, Name: "root"}})
-	m.statsTTL = 50 * time.Millisecond // 测试用短 TTL
+	m.checkInterval = 5 * time.Millisecond // 测试用短校验节流
 	m.WarmUp()
 	if f := waitFileCount(t, m, folderID(root), 1, 3*time.Second); f.TotalSize != 100 {
 		t.Fatalf("初始总大小 = %d，期望 100", f.TotalSize)
 	}
 
-	// 目录新增文件后，TTL 过期前 List 仍返回缓存旧值（不阻塞、不立即重扫）
+	// 目录新增文件后，指纹校验发现根目录 mtime 变化 → 后台重扫，统计更新为 2
 	writeFile(t, filepath.Join(root, "b.txt"), 50)
-	if f := m.List(); f[0].FileCount != 1 {
-		t.Fatalf("TTL 内应返回缓存旧值，实际 fileCount = %d", f[0].FileCount)
-	}
-
-	// 等待 TTL 过期后 List 触发后台重扫，统计应更新为 2
 	f := waitFileCount(t, m, folderID(root), 2, 3*time.Second)
 	if f.TotalSize != 150 {
 		t.Errorf("重扫后总大小 = %d，期望 150", f.TotalSize)
+	}
+}
+
+// TestStatsRefreshOnDeepChange 验证深层子目录新增文件（根目录 mtime 不变）也能被
+// 目录级 mtime 指纹感知并触发重扫，证明指纹覆盖整棵目录树而非只看根目录。
+func TestStatsRefreshOnDeepChange(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.txt"), 100)
+	m := NewManager([]config.SharedFolder{{Path: root, Name: "root"}})
+	m.checkInterval = 5 * time.Millisecond
+	m.WarmUp()
+	if f := waitFileCount(t, m, folderID(root), 1, 3*time.Second); f.TotalSize != 100 {
+		t.Fatalf("初始总大小 = %d，期望 100", f.TotalSize)
+	}
+
+	// 在 sub/deep 深处新增文件：只更新 deep 目录的 mtime，根目录 mtime 不变
+	writeFile(t, filepath.Join(root, "sub", "deep", "x.txt"), 30)
+	f := waitFileCount(t, m, folderID(root), 2, 3*time.Second)
+	if f.TotalSize != 130 {
+		t.Errorf("深层新增后总大小 = %d，期望 130", f.TotalSize)
+	}
+}
+
+// TestStatsKeptFreshWithoutChange 目录无任何变化时，多次 List 的指纹校验不发现变化，
+// 不应触发重扫（缓存不过期，scannedAt 保持不变）。
+func TestStatsKeptFreshWithoutChange(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.txt"), 100)
+	m := NewManager([]config.SharedFolder{{Path: root, Name: "root"}})
+	m.checkInterval = time.Millisecond
+	id := folderID(root)
+	m.WarmUp()
+	waitFileCount(t, m, id, 1, 3*time.Second)
+
+	m.statsMu.RLock()
+	before := m.stats[id].scannedAt
+	m.statsMu.RUnlock()
+	// 无变化时反复 List：每次指纹校验都不发现变化，不应安排重扫
+	for i := 0; i < 5; i++ {
+		_ = m.List()
+		time.Sleep(5 * time.Millisecond)
+	}
+	m.statsMu.RLock()
+	after := m.stats[id].scannedAt
+	m.statsMu.RUnlock()
+	if !after.Equal(before) {
+		t.Errorf("目录无变化时不应重扫：scannedAt 从 %v 变为 %v", before, after)
+	}
+}
+
+// TestStatsNotRefreshedOnInPlaceRewrite 原地改写文件内容（仅文件 mtime 变化、父目录
+// mtime 不变）不会被指纹感知 → 不触发重扫。这是「仅按目录修改时间判定」的已知取舍：
+// 大多数编辑器保存是先写临时文件再 rename 覆盖（会更新目录 mtime 而被感知），
+// 直接 truncate 覆盖的场景统计会在下一次结构变化或重启时刷新。
+func TestStatsNotRefreshedOnInPlaceRewrite(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.txt"), 100)
+	m := NewManager([]config.SharedFolder{{Path: root, Name: "root"}})
+	m.checkInterval = time.Millisecond
+	id := folderID(root)
+	m.WarmUp()
+	waitFileCount(t, m, id, 1, 3*time.Second)
+
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootMtime := rootInfo.ModTime()
+	// 原地覆盖文件内容（大小也变）：os.WriteFile 走 truncate，不改变父目录 mtime
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("覆盖文件失败: %v", err)
+	}
+	rootInfo, err = os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rootInfo.ModTime().Equal(rootMtime) {
+		t.Skip("当前文件系统原地写文件会更新目录 mtime，跳过本局限用例")
+	}
+
+	m.statsMu.RLock()
+	before := m.stats[id].scannedAt
+	m.statsMu.RUnlock()
+	for i := 0; i < 5; i++ {
+		_ = m.List()
+		time.Sleep(5 * time.Millisecond)
+	}
+	m.statsMu.RLock()
+	after := m.stats[id].scannedAt
+	m.statsMu.RUnlock()
+	if !after.Equal(before) {
+		t.Errorf("原地改写文件不应触发重扫：scannedAt 从 %v 变为 %v", before, after)
+	}
+}
+
+// TestStatsHandlesRemovedFolder 共享目录本体被删除后统计清零且不反复重扫；
+// 目录恢复后指纹校验发现重现，重扫恢复统计。
+func TestStatsHandlesRemovedFolder(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.txt"), 100)
+	m := NewManager([]config.SharedFolder{{Path: root, Name: "root"}})
+	m.checkInterval = 5 * time.Millisecond
+	id := folderID(root)
+	m.WarmUp()
+	waitFileCount(t, m, id, 1, 3*time.Second)
+
+	// 删除目录本体 → 指纹校验发现目录消失，后台重扫把统计清零
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatalf("删除目录失败: %v", err)
+	}
+	if f := waitFileCount(t, m, id, 0, 3*time.Second); f.TotalSize != 0 {
+		t.Errorf("目录删除后总大小 = %d，期望清零", f.TotalSize)
+	}
+	// 目录持续缺失：已反映缺失，后续 List 不应反复触发重扫
+	m.statsMu.RLock()
+	before := m.stats[id].scannedAt
+	m.statsMu.RUnlock()
+	for i := 0; i < 3; i++ {
+		_ = m.List()
+		time.Sleep(10 * time.Millisecond)
+	}
+	m.statsMu.RLock()
+	after := m.stats[id].scannedAt
+	m.statsMu.RUnlock()
+	if !after.Equal(before) {
+		t.Errorf("目录持续缺失时不应反复重扫：scannedAt 从 %v 变为 %v", before, after)
+	}
+
+	// 目录恢复并放入新文件 → 指纹校验发现目录重现，重扫恢复统计
+	writeFile(t, filepath.Join(root, "b.txt"), 200)
+	f := waitFileCount(t, m, id, 1, 3*time.Second)
+	if f.TotalSize != 200 {
+		t.Errorf("目录恢复后总大小 = %d，期望 200", f.TotalSize)
 	}
 }
 
