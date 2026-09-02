@@ -10,6 +10,7 @@ import {
     Input,
     Modal,
     Popconfirm,
+    Space,
     Spin,
     Table,
     Tooltip,
@@ -216,18 +217,27 @@ export default function LocalPanel() {
         }
     };
 
-    /** 移除共享文件夹的访问密码（恢复开放，其他节点无需密码即可访问） */
-    const handleRemovePassword = async (record: ApiFolderInfo) => {
-        setPwRemoving(record.id);
+    /** 从修改密码弹窗内移除该文件夹的访问密码（恢复开放，其他节点无需密码即可访问） */
+    const handleRemovePassword = async () => {
+        if (!pwEdit) return;
+        setPwRemoving(pwEdit.id);
         try {
-            await setFolderPassword(record.path, '');
-            message.success(`已移除「${record.name}」的访问密码（恢复开放）`);
+            await setFolderPassword(pwEdit.path, '');
+            message.success(`已移除「${pwEdit.name}」的访问密码（恢复开放）`);
+            setPwEdit(null);
+            setPwEditText('');
             setRefresh((x) => x + 1);
         } catch (e) {
             message.error(e instanceof Error ? e.message : '移除密码失败');
         } finally {
             setPwRemoving(null);
         }
+    };
+
+    /** 关闭密码弹窗 */
+    const closePwEdit = () => {
+        setPwEdit(null);
+        setPwEditText('');
     };
 
     const columns: ColumnsType<ApiFolderInfo> = [
@@ -294,59 +304,30 @@ export default function LocalPanel() {
         {
             title: '操作',
             key: 'action',
-            width: 230,
+            width: 180,
             render: (_, record) => (
                 // 点击行 = 打开文件夹浏览页；操作按钮需阻止冒泡避免误跳转
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    {record.auth ? (
-                        <>
-                            <Tooltip title="为该文件夹设置新的访问密码">
-                                <Button
-                                    type="link"
-                                    size="small"
-                                    icon={<KeyOutlined/>}
-                                    onClick={() => {
-                                        setPwEdit(record);
-                                        setPwEditText('');
-                                    }}
-                                >
-                                    修改密码
-                                </Button>
-                            </Tooltip>
-                            <Popconfirm
-                                title="移除访问密码"
-                                description={`确定移除「${record.name}」的访问密码吗？移除后其他节点无需密码即可访问。`}
-                                okText="移除"
-                                cancelText="取消"
-                                okButtonProps={{danger: true}}
-                                onConfirm={() => handleRemovePassword(record)}
-                            >
-                                <Button
-                                    type="link"
-                                    size="small"
-                                    danger
-                                    loading={pwRemoving === record.id}
-                                    icon={<UnlockOutlined/>}
-                                >
-                                    移除密码
-                                </Button>
-                            </Popconfirm>
-                        </>
-                    ) : (
-                        <Tooltip title="为该文件夹设置访问密码">
-                            <Button
-                                type="link"
-                                size="small"
-                                icon={<KeyOutlined/>}
-                                onClick={() => {
-                                    setPwEdit(record);
-                                    setPwEditText('');
-                                }}
-                            >
-                                添加密码
-                            </Button>
-                        </Tooltip>
-                    )}
+                    {/* 密码入口：无密码的文件夹可「添加密码」；已设密码的可「修改密码」（弹窗内可移除） */}
+                    <Tooltip
+                        title={
+                            record.auth
+                                ? '修改或移除该文件夹的访问密码'
+                                : '为该文件夹设置访问密码'
+                        }
+                    >
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<KeyOutlined/>}
+                            onClick={() => {
+                                setPwEdit(record);
+                                setPwEditText('');
+                            }}
+                        >
+                            {record.auth ? '修改密码' : '添加密码'}
+                        </Button>
+                    </Tooltip>
                     <Popconfirm
                         title="移除共享文件夹"
                         description={`确定不再共享「${record.name}」吗？`}
@@ -534,7 +515,7 @@ export default function LocalPanel() {
                 />
             </Modal>
 
-            {/* 添加/修改访问密码弹窗：由操作列密码入口进入（移除密码为独立按钮，不走此弹窗） */}
+            {/* 添加/修改访问密码弹窗：修改场景弹窗内提供「移除密码」按钮（输入框不再承担移除语义） */}
             <Modal
                 open={pwEdit !== null}
                 title={
@@ -544,20 +525,42 @@ export default function LocalPanel() {
                             : `设置访问密码：${pwEdit.name}`
                         : '访问密码'
                 }
-                okText={pwEdit?.auth ? '确认修改' : '确认添加'}
-                okButtonProps={{disabled: !pwEditText.trim()}}
+                onCancel={closePwEdit}
+                footer={
+                    pwEdit?.auth ? (
+                        <div className="flex items-center justify-between">
+                            <Button
+                                danger
+                                icon={<UnlockOutlined/>}
+                                loading={pwRemoving === pwEdit.id}
+                                onClick={handleRemovePassword}
+                            >
+                                移除密码
+                            </Button>
+                            <Space>
+                                <Button onClick={closePwEdit}>取消</Button>
+                                <Button
+                                    type="primary"
+                                    disabled={!pwEditText.trim()}
+                                    loading={pwEditSubmitting}
+                                    onClick={handleSavePassword}
+                                >
+                                    确认修改
+                                </Button>
+                            </Space>
+                        </div>
+                    ) : undefined
+                }
+                okText="确认添加"
                 cancelText="取消"
                 confirmLoading={pwEditSubmitting}
                 onOk={handleSavePassword}
-                onCancel={() => {
-                    setPwEdit(null);
-                    setPwEditText('');
-                }}
             >
                 {pwEdit?.auth ? (
                     <div className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
                         输入新的访问密码并确认；修改后此前已签发的访问令牌立即失效，其他节点需用新密码重新认证。
-                        如需完全移除密码（恢复开放），请关闭弹窗使用操作列的「移除密码」。
+                        <br/>
+                        如需完全移除密码（恢复开放），点击左下角「移除密码」即可。
                     </div>
                 ) : (
                     <div className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
