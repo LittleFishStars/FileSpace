@@ -111,6 +111,8 @@ func (a *app) waitAndShutdown() {
 	<-quit
 	fmt.Println("\n正在退出...")
 	saveLastShared(a.folders)
+	// 停止目录变更监听（释放 fsnotify 资源），统计缓存的扫描 goroutine 随进程退出自然结束
+	a.folders.Close()
 	// 通知其他节点本节点已退出：它们收到后立即把本节点从在线列表移除，
 	// 无需等待离线超时（60s）。
 	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -122,16 +124,17 @@ func (a *app) waitAndShutdown() {
 	_ = a.httpSrv.Shutdown(shutdownCtx)
 }
 
-// saveLastShared 记录本次共享的目录（含运行中追加的），供下次未指定目录时恢复。
+// saveLastShared 记录本次共享的目录（含运行中追加/设置的访问密码），
+// 供下次未指定目录时恢复——重启后文件夹的密码不会丢失。
 func saveLastShared(folders *share.Manager) {
-	infos := folders.List()
-	paths := make([]string, 0, len(infos))
-	for _, f := range infos {
-		paths = append(paths, f.Path)
-	}
-	if err := state.SaveLastShared(paths); err != nil {
+	shared := folders.SharedSnapshot()
+	if err := state.SaveLastShared(shared); err != nil {
 		log.Printf("记录共享目录失败: %v", err)
 		return
+	}
+	paths := make([]string, 0, len(shared))
+	for _, f := range shared {
+		paths = append(paths, f.Path)
 	}
 	fmt.Printf("已记录本次共享的目录: %s\n", strings.Join(paths, ", "))
 }

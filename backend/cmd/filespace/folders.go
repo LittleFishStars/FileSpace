@@ -53,11 +53,17 @@ func sharedFromPaths(paths []string, passwd string) []config.SharedFolder {
 	return shared
 }
 
-// restoreOrCurrent 未指定任何共享目录：优先恢复上次退出前共享的目录，无记录时回退到当前目录。
+// restoreOrCurrent 未指定任何共享目录：优先恢复上次退出前共享的目录（含各自访问密码），
+// 无记录时回退到当前目录。本次 -P/--passwd 作为默认密码仅覆盖恢复记录中未显式设密的文件夹。
 func restoreOrCurrent(cfg *config.Config, passwd string) {
 	if last := state.LoadLastShared(); len(last) > 0 {
-		cfg.Shared = sharedFromPaths(last, passwd)
-		fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(last, ", "))
+		cfg.Shared = last
+		applyDefaultPasswd(cfg, passwd)
+		paths := make([]string, 0, len(last))
+		for _, f := range last {
+			paths = append(paths, f.Path)
+		}
+		fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(paths, ", "))
 		return
 	}
 	cwd, _ := os.Getwd()
@@ -76,14 +82,15 @@ func addCurrentDir(cfg *config.Config, passwd string) {
 	fmt.Printf("已指定 -a，额外共享当前目录: %s\n", cwd)
 }
 
-// applyDefaultPasswd 用默认密码填充未显式设置密码（shared_folders[].passwd 为空）的文件夹，
-// 不覆盖配置文件中为单个文件夹指定的独立密码。
+// applyDefaultPasswd 用默认密码填充未显式设置密码（shared_folders[].passwd 与
+// passwd_hash 均为空）的文件夹，不覆盖配置文件中为单个文件夹指定的独立密码
+// （含其哈希表示，如恢复的上次共享记录）；明文密码由 NewManager 统一转哈希。
 func applyDefaultPasswd(cfg *config.Config, passwd string) {
 	if passwd == "" {
 		return
 	}
 	for i := range cfg.Shared {
-		if cfg.Shared[i].Passwd == "" {
+		if cfg.Shared[i].Passwd == "" && cfg.Shared[i].PasswdHash == "" {
 			cfg.Shared[i].Passwd = passwd
 		}
 	}

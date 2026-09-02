@@ -3,6 +3,7 @@ module filespace
 go 1.27.0
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/shirou/gopsutil/v4 v4.26.7
 	gopkg.in/yaml.v3 v3.0.1

@@ -6,14 +6,17 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"filespace/internal/config"
 )
 
-// lastSharedFile 状态文件名：记录最近一次退出前共享的目录，供下次未指定共享目录时恢复。
+// lastSharedFile 状态文件名：记录最近一次退出前共享的目录（含访问密码），
+// 供下次未指定共享目录时恢复，保证重启后文件夹密码不丢失。
 const lastSharedFile = "last-shared.yaml"
 
-// lastShared 状态文件内容：仅持久化目录路径，名称由路径派生。
+// lastShared 状态文件内容：路径 + 访问密码（空表示开放），名称由路径派生。
 type lastShared struct {
-	Shared []string `yaml:"shared"`
+	Shared []config.SharedFolder `yaml:"shared"`
 }
 
 // dir 返回用户配置目录下 filespace/ 子目录。
@@ -59,24 +62,35 @@ func read(path string, v any) error {
 	return yaml.Unmarshal(data, v)
 }
 
-// SaveLastShared 记录最近一次共享的目录列表。
-func SaveLastShared(paths []string) error {
+// SaveLastShared 记录最近一次共享的目录（含各目录访问密码，空表示开放）。
+func SaveLastShared(shared []config.SharedFolder) error {
 	path, err := path(lastSharedFile)
 	if err != nil {
 		return err
 	}
-	return write(path, lastShared{Shared: paths})
+	return write(path, lastShared{Shared: shared})
 }
 
-// LoadLastShared 读取上次共享的目录列表；无记录或文件损坏时返回空列表。
-func LoadLastShared() []string {
+// LoadLastShared 读取上次共享的目录（含访问密码）；无记录或文件损坏时返回空列表。
+// 兼容旧版仅存路径列表（shared: [path...]）的状态文件：读取后按无密码处理。
+func LoadLastShared() []config.SharedFolder {
 	path, err := path(lastSharedFile)
 	if err != nil {
 		return nil
 	}
 	var st lastShared
-	if err := read(path, &st); err != nil {
-		return nil
+	if err := read(path, &st); err == nil {
+		return st.Shared
 	}
-	return st.Shared
+	var legacy struct {
+		Shared []string `yaml:"shared"`
+	}
+	if err := read(path, &legacy); err == nil {
+		out := make([]config.SharedFolder, 0, len(legacy.Shared))
+		for _, p := range legacy.Shared {
+			out = append(out, config.SharedFolder{Path: p})
+		}
+		return out
+	}
+	return nil
 }

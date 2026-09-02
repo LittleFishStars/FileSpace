@@ -13,9 +13,13 @@ import (
 type SharedFolder struct {
 	Path string `yaml:"path" json:"path"`
 	Name string `yaml:"name" json:"name"`
-	// Passwd 该文件夹的访问密码：为空表示对局域网开放；
-	// 设置后其他节点需先通过 /api/auth 认证（换取访问令牌）才能查看/下载该文件夹的内容，本机回环访问不受影响。
-	Passwd string `yaml:"passwd" json:"passwd"`
+	// Passwd 明文访问密码（仅作输入语义：配置文件 / 命令行 / 旧版状态文件中的明文记录）。
+	// 程序内部与持久化统一使用其 sha256 哈希（PasswdHash），明文不回存到任何状态文件。
+	// 为空表示该文件夹开放（或密码由 PasswdHash 给出）。
+	Passwd string `yaml:"passwd,omitempty" json:"passwd,omitempty"`
+	// PasswdHash 访问密码的 sha256 十六进制哈希（程序内部与 last-shared.yaml 的持久化表示）。
+	// 与 Passwd 同时存在时以 PasswdHash 为准；两者皆空表示对局域网开放。
+	PasswdHash string `yaml:"passwd_hash,omitempty" json:"passwdHash,omitempty"`
 }
 
 // DiscoveryConfig mDNS 发现配置。
