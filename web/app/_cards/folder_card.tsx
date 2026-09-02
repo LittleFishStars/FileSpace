@@ -43,10 +43,10 @@ export default function FolderCard({
   folder: FolderInfo
   className?: string
 }) {
-  // 首层统计：仅该目录第一层直接文件（不递归子文件夹），进入子文件夹后按需懒加载
+  // 全量统计：文件数与总大小由后端后台扫描缓存（目录较大时首次显示可能有短暂延迟）
   const stats = [
-    { label: '首层文件', tip: '仅统计该文件夹第一层直接文件，不包含子文件夹内容（进入子文件夹后按需加载）', value: String(folder.fileCount ?? 0) },
-    { label: '首层总大小', tip: '仅统计该文件夹第一层直接文件的大小，不包含子文件夹内容（进入子文件夹后按需加载）', value: formatSize(folder.totalSize) },
+    { label: '文件', value: String(folder.fileCount ?? 0) },
+    { label: '总大小', value: formatSize(folder.totalSize) },
   ]
 
   return (
@@ -87,11 +87,9 @@ export default function FolderCard({
             <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
               {stat.value}
             </div>
-            <Tooltip title={stat.tip}>
-              <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                {stat.label}
-              </div>
-            </Tooltip>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              {stat.label}
+            </div>
           </div>
         ))}
       </div>

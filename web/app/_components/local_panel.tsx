@@ -76,12 +76,19 @@ export default function LocalPanel() {
         // 节点信息未就绪（加载中 / 拉取失败）时保持加载态，由 AccessProvider 状态兜底
         if (!node) return;
         let cancelled = false;
+        // 统计缓存未就绪时的延迟刷新计时器（大目录后台扫描中，先显示 0 值再补拉真实统计）
+        let refreshTimer: number | undefined;
         async function load() {
             try {
                 const fs = await fetchFolders();
                 if (cancelled) return;
                 setFolders(fs);
                 setError(null);
+                // 全部文件夹统计均为 0 且列表非空：统计缓存可能尚未就绪（后台扫描中），
+                // 延迟数秒再拉一次，让文件数/总大小显示真实值（目录确为空的文件夹多拉一次也无碍）
+                if (fs.length > 0 && fs.every((f) => f.fileCount === 0 && f.totalSize === 0)) {
+                    refreshTimer = window.setTimeout(() => setRefresh((r) => r + 1), 2500);
+                }
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
             }
@@ -89,6 +96,7 @@ export default function LocalPanel() {
         load();
         return () => {
             cancelled = true;
+            if (refreshTimer) window.clearTimeout(refreshTimer);
         };
     }, [node, refresh]);
 
@@ -203,24 +211,24 @@ export default function LocalPanel() {
         },
         {
             title: (
-                <Tooltip title="仅统计该文件夹第一层直接文件，不包含子文件夹内容（进入子文件夹后按需加载）">
-                    <span>首层文件数</span>
+                <Tooltip title="后台统计该文件夹全部文件的实时总数，目录较大时首次加载可能有短暂延迟">
+                    <span>文件数</span>
                 </Tooltip>
             ),
             dataIndex: 'fileCount',
             key: 'fileCount',
-            width: 110,
+            width: 90,
             align: 'right' as const,
         },
         {
             title: (
-                <Tooltip title="仅统计该文件夹第一层直接文件的大小，不包含子文件夹内容（进入子文件夹后按需加载）">
-                    <span>首层总大小</span>
+                <Tooltip title="后台统计该文件夹全部文件的总大小，目录较大时首次加载可能有短暂延迟">
+                    <span>总大小</span>
                 </Tooltip>
             ),
             dataIndex: 'totalSize',
             key: 'totalSize',
-            width: 120,
+            width: 110,
             align: 'right' as const,
             render: (value: number) => formatSize(value),
         },

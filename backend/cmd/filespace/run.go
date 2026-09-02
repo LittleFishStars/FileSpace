@@ -46,6 +46,8 @@ func (a *app) build() {
 	a.mon = monitor.New()
 	a.nodeID = config.NodeID(a.mon.Hostname())
 	a.folders = share.NewManager(a.cfg.Shared)
+	// 启动时后台预扫共享目录填充统计缓存（不阻塞启动，列表接口首次请求即可拿到统计）
+	a.folders.WarmUp()
 	a.peers = discovery.NewCache(a.nodeID)
 }
 
