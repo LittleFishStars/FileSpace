@@ -40,11 +40,6 @@ type Folder struct {
 	RealPath string
 }
 
-// statsCheckInterval List 中对目录树做修改时间指纹校验的最大频率：
-// 校验只遍历各级目录（stat 目录自身的 mtime，不 stat 文件），用于判断自上次
-// 全量扫描以来目录树是否发生过增删改；只有校验发现变化才在后台触发全量重扫。
-const statsCheckInterval = 5 * time.Second
-
 // folderStats 一个共享目录的全量统计（文件数 / 总大小 / 最近更新）缓存。
 type folderStats struct {
 	count     int
@@ -52,28 +47,30 @@ type folderStats struct {
 	updated   time.Time
 	scannedAt time.Time // 最近一次成功全量扫描的完成时间（零值表示尚未扫描）
 	scanning  bool      // 是否已有后台扫描在进行（防止并发重复扫描）
-	// dirs 最近一次扫描时树内每个目录（含根 "."）的相对路径 → mtime（UnixNano）指纹：
-	// 任意位置的目录项新建/删除/重命名/移动都会更新所在目录的 mtime，
-	// 指纹校验据此判断缓存是否过期——有变化才重扫，无变化的缓存不过期。
-	dirs map[string]int64
-	// checkedAt 最近一次做指纹校验的时刻（节流用，见 statsCheckInterval；测试可调小）。
-	checkedAt time.Time
-	// missing 最近一次扫描时目录不存在（被删除等，统计已清零）：
-	// 目录持续缺失时视为无变化，避免每次 List 反复触发重扫。
+	dirty     bool      // 扫描期间又有变更事件到达：本次扫描完成后需立即重扫
+	// missing 最近一次扫描时目录不存在（被删除等，统计已清零）。
+	// 目录整体被删除后其事件监听随目录消失而失效，重建的目录不会再产生事件，
+	// List 据此标记检测目录重现：发现重现则补扫并重新挂载监听。
 	missing bool
 }
 
 // Manager 管理本节点共享的目录（支持运行中追加）。
 // 目录统计（文件数 / 总大小 / 最近更新）采用「缓存 + 后台异步扫描」：
-// List 直接返回缓存；缓存是否过期由目录树修改时间指纹判定——指纹有变化（目录项
-// 增删改）才在后台重扫，无变化的缓存不过期，避免列表接口同步全量遍历大目录导致卡顿。
+// 缓存是否过期由文件系统变更事件驱动（见 dirWatcher）——磁盘上任意文件/目录
+// 变化（含原地改写内容、任意深度增删改）都会触发一次后台重扫，无变化时零开销；
+// List 只读缓存，永不因全量遍历阻塞（本机管理页 / 节点发现 / 页面轮询都走这里）。
 type Manager struct {
 	mu      sync.RWMutex
 	folders []Folder
 	statsMu sync.RWMutex
 	stats   map[string]*folderStats
-	// checkInterval 指纹校验的最大频率（测试可调小；生产为 statsCheckInterval 常量默认值）。
-	checkInterval time.Duration
+
+	lifeMu    sync.Mutex // 保护监听器启停
+	watcher   *dirWatcher
+	watchStop func()
+	closed    bool // Close 后不再重启监听
+	// debounce 目录变更事件的防抖窗口（测试可调小；生产默认 watchDebounce）。
+	debounce time.Duration
 }
 
 // NewManager 根据配置创建共享目录管理器，为每个目录生成稳定 ID。
@@ -92,7 +89,7 @@ func NewManager(shared []config.SharedFolder) *Manager {
 			RealPath: realPath(sf.Path),
 		})
 	}
-	m := &Manager{folders: folders, stats: make(map[string]*folderStats, len(folders)), checkInterval: statsCheckInterval}
+	m := &Manager{folders: folders, stats: make(map[string]*folderStats, len(folders)), debounce: watchDebounce}
 	// 预创建统计条目：WarmUp / List 触发 scanAsync 时能找到目标，立即开始后台扫描
 	for _, f := range folders {
 		m.stats[f.ID] = &folderStats{}
@@ -100,7 +97,7 @@ func NewManager(shared []config.SharedFolder) *Manager {
 	return m
 }
 
-// Add 运行中追加一个共享目录：校验路径存在且为目录。
+// Add 运行中追加一个共享目录：校验路径存在且为目录，随即开始监听其变更并后台预扫。
 // password 为可选访问密码（空表示开放）；去重仅针对指向同一目录的重复
 // （精确路径或符号链接解析后的真实路径相同），不阻止同时共享父目录与其子目录。
 func (m *Manager) Add(path, password string) (Folder, error) {
@@ -117,17 +114,23 @@ func (m *Manager) Add(path, password string) (Folder, error) {
 	}
 	real := realPath(abs)
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, f := range m.folders {
 		if f.Path == abs || (f.RealPath != "" && f.RealPath == real) {
+			m.mu.Unlock()
 			return f, ErrFolderExists
 		}
 	}
 	f := Folder{ID: folderID(abs), Name: filepath.Base(abs), Path: abs, Passwd: password, RealPath: real}
 	m.folders = append(m.folders, f)
+	m.mu.Unlock()
+
 	m.statsMu.Lock()
 	m.stats[f.ID] = &folderStats{}
 	m.statsMu.Unlock()
+
+	if w := m.ensureWatcher(); w != nil {
+		w.watchFolder(f.ID, abs)
+	}
 	go m.scanAsync(f.ID) // 后台预扫一次，尽快填充统计缓存
 	return f, nil
 }
@@ -172,26 +175,38 @@ func realPath(path string) string {
 	return path
 }
 
-// Remove 按 ID 移除共享目录；不存在返回 ErrFolderNotFound。
+// Remove 按 ID 移除共享目录（同时停止监听其变更）；不存在返回 ErrFolderNotFound。
 func (m *Manager) Remove(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	idx := -1
 	for i := range m.folders {
 		if m.folders[i].ID == id {
-			m.folders = append(m.folders[:i], m.folders[i+1:]...)
-			m.statsMu.Lock()
-			delete(m.stats, id)
-			m.statsMu.Unlock()
-			return nil
+			idx = i
+			break
 		}
 	}
-	return ErrFolderNotFound
+	if idx == -1 {
+		m.mu.Unlock()
+		return ErrFolderNotFound
+	}
+	m.folders = append(m.folders[:idx], m.folders[idx+1:]...)
+	m.mu.Unlock()
+
+	m.statsMu.Lock()
+	delete(m.stats, id)
+	m.statsMu.Unlock()
+
+	if w := m.currentWatcher(); w != nil {
+		w.unwatchFolder(id)
+	}
+	return nil
 }
 
 // List 返回共享文件夹列表（含全量统计：文件数 / 总大小 / 最近更新）。
-// 统计来自缓存，缓存是否过期由目录树修改时间指纹判定（见 folderChanged）：
-// 未扫描过、或指纹校验发现目录树发生变化时在后台异步重扫，本方法立即返回当前
-// 缓存值，不会因大目录的全量遍历阻塞列表接口（本机管理页 / 节点发现 / 页面轮询都走这里）。
+// 统计来自缓存，由文件变更事件在后台刷新（见 dirWatcher），本方法不主动扫描，
+// 仅兜底两种情况：① 从未扫描过 → 后台补扫；② 目录曾被删除（missing）而现已
+// 重现（重建目录不在事件监听范围内）→ 后台补扫并重新监听。
+// 无论哪种情况都立即返回当前缓存值，不会因大目录的全量遍历阻塞列表接口。
 func (m *Manager) List() []model.FolderInfo {
 	m.mu.RLock()
 	folders := make([]Folder, len(m.folders))
@@ -205,19 +220,15 @@ func (m *Manager) List() []model.FolderInfo {
 			st = &folderStats{}
 			m.stats[f.ID] = st
 		}
-		needScan := false
-		switch {
-		case st.scannedAt.IsZero():
-			// 尚未扫描过：后台补扫
-			needScan = true
-		case time.Since(st.checkedAt) >= m.checkInterval:
-			// 校验节流到期：锁外按目录 mtime 指纹判断缓存是否过期（不 stat 文件）
-			st.checkedAt = time.Now()
-			dirs := st.dirs
-			missing := st.missing
+		needScan := st.scannedAt.IsZero()
+		if !needScan && st.missing {
+			// 目录重现检测：仅当缓存标记缺失时 stat 一次（非常见路径，非轮询）
 			m.statsMu.Unlock()
-			if folderChanged(f.Path, dirs, missing) {
-				needScan = true // 目录树发生过变化：后台重扫
+			if _, err := os.Stat(f.Path); err == nil {
+				needScan = true
+				if w := m.currentWatcher(); w != nil {
+					w.watchFolder(f.ID, f.Path) // 重新挂载监听（此前随目录删除失效）
+				}
 			}
 			m.statsMu.Lock()
 		}
@@ -239,9 +250,10 @@ func (m *Manager) List() []model.FolderInfo {
 	return result
 }
 
-// WarmUp 启动时后台预扫所有共享目录，填充统计缓存（不阻塞调用方；
-// 目录多或体积大时并发扫描，扫描完成前 List 返回零值统计）。
+// WarmUp 启动时后台预扫所有共享目录，填充统计缓存，并开始监听目录变更事件
+// （不阻塞调用方；目录多或体积大时并发扫描，扫描完成前 List 返回零值统计）。
 func (m *Manager) WarmUp() {
+	m.ensureWatcher()
 	m.mu.RLock()
 	ids := make([]string, len(m.folders))
 	for i, f := range m.folders {
@@ -254,33 +266,52 @@ func (m *Manager) WarmUp() {
 }
 
 // scanAsync 后台全量扫描一个共享目录并更新统计缓存。
-// 并发安全：scanning 标志防止重复扫描；扫描期间不持有任何锁，不阻塞 List。
+// 并发安全：scanning 标志防止重复扫描；若扫描期间又有变更事件到达（dirty），
+// 本次结果作废并立即重扫，保证统计不落后于磁盘；扫描期间不持有任何锁，不阻塞 List。
 func (m *Manager) scanAsync(id string) {
-	m.statsMu.Lock()
-	st, ok := m.stats[id]
-	if !ok || st.scanning {
-		m.statsMu.Unlock()
-		return
-	}
-	st.scanning = true
-	m.statsMu.Unlock()
-	defer func() {
+	for {
 		m.statsMu.Lock()
+		st, ok := m.stats[id]
+		if !ok {
+			m.statsMu.Unlock()
+			return
+		}
+		if st.scanning {
+			st.dirty = true // 已有扫描在跑：标记待重扫，避免事件驱动下的变更丢失
+			m.statsMu.Unlock()
+			return
+		}
+		st.scanning = true
+		st.dirty = false
+		m.statsMu.Unlock()
+
+		f, ok := m.Resolve(id) // 扫描期间目录可能已被移除
+		if !ok {
+			m.statsMu.Lock()
+			st.scanning = false
+			m.statsMu.Unlock()
+			return
+		}
+		sc := scanFolder(f.Path)
+		m.statsMu.Lock()
+		if st.dirty {
+			// 扫描期间目录又发生变化：本次结果作废，立即重扫
+			st.scanning = false
+			m.statsMu.Unlock()
+			continue
+		}
+		if sc.missing {
+			// 目录不存在（被删除等）：统计清零并标记缺失，避免目录列表出现异常数据
+			st.count, st.size, st.updated = 0, 0, time.Time{}
+			st.missing = true
+		} else {
+			st.count, st.size, st.updated, st.missing = sc.count, sc.size, sc.updated, false
+		}
+		st.scannedAt = time.Now()
 		st.scanning = false
 		m.statsMu.Unlock()
-	}()
-	f, ok := m.Resolve(id) // 扫描期间目录可能已被移除
-	if !ok {
 		return
 	}
-	sc := scanFolder(f.Path)
-	now := time.Now()
-	m.statsMu.Lock()
-	st.count, st.size, st.updated = sc.count, sc.size, sc.updated
-	st.dirs, st.missing = sc.dirs, sc.missing
-	// 新指纹即刻生效；重置校验节流，让刚完成的重扫结果至少保留一个校验周期
-	st.scannedAt, st.checkedAt = now, now
-	m.statsMu.Unlock()
 }
 
 // Resolve 按 ID 查找共享目录。
@@ -302,33 +333,26 @@ func folderID(path string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// folderScan 一次全量扫描的产物：文件统计 + 目录树 mtime 指纹快照。
+// folderScan 一次全量扫描的产物。
 type folderScan struct {
 	count   int
 	size    int64
 	updated time.Time
-	missing bool             // 目录不存在（被删除等）
-	dirs    map[string]int64 // 树内所有目录（含根 "."）相对路径 → mtime（UnixNano）
+	missing bool // 目录不存在（被删除等）
 }
 
-// scanFolder 全量扫描一个共享目录：统计文件数 / 总大小 / 最近修改时间，
-// 并记录树内各级目录的 mtime 指纹（供 List 按修改时间判断统计缓存是否过期）。
+// scanFolder 全量扫描一个共享目录，统计文件数、总大小与最近修改时间。
 // 只在后台 goroutine 中调用（见 scanAsync），绝不直接在列表请求中同步执行。
-func scanFolder(root string) folderScan {
-	rootInfo, err := os.Stat(root)
-	if err != nil {
-		// 根目录不存在（被删除等）：统计清零并标记缺失，避免目录列表出现异常数据
-		return folderScan{missing: true, dirs: map[string]int64{}}
+func scanFolder(root string) (sc folderScan) {
+	if _, err := os.Stat(root); err != nil {
+		sc.missing = true
+		return sc
 	}
-	sc := folderScan{dirs: map[string]int64{dirKey(root, root): rootInfo.ModTime().UnixNano()}}
 	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // 单项不可访问（权限/竞态删除）时跳过，不中断整树扫描
 		}
 		if d.IsDir() {
-			if info, err := d.Info(); err == nil {
-				sc.dirs[dirKey(root, path)] = info.ModTime().UnixNano()
-			}
 			return nil
 		}
 		sc.count++
@@ -341,59 +365,4 @@ func scanFolder(root string) folderScan {
 		return nil
 	})
 	return sc
-}
-
-// dirKey 计算树内路径相对根目录的指纹键（统一 / 分隔，根目录为 "."）。
-func dirKey(root, path string) string {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
-}
-
-// folderChanged 按目录树修改时间指纹判断目录自上次扫描（dirs 快照）后是否变化。
-//
-// 原理：树内任意位置的「新建 / 删除 / 重命名 / 移动目录项」都会更新所在目录的
-// mtime，因此递归比较各级目录的 mtime 即可感知任意深度的结构变化，且无需 stat 文件。
-// 局限：原地改写文件内容只更新该文件自身 mtime（父目录 mtime 不变），此处无法感知，
-// 相关统计差异会在下一次结构变化或进程重启时通过重扫刷新。
-func folderChanged(root string, dirs map[string]int64, missing bool) bool {
-	if _, err := os.Stat(root); err != nil {
-		// 目录消失/不可访问：缓存尚未反映缺失（!missing）才视为变化触发重扫清零；
-		// 已反映缺失则持续缺失不算变化，避免每次 List 反复触发重扫。
-		return !missing
-	}
-	if missing {
-		return true // 目录重新出现：重扫恢复统计
-	}
-	if len(dirs) == 0 {
-		return true // 无指纹快照的异常状态，保守视为有变化
-	}
-	seen := make(map[string]bool, len(dirs))
-	changed := false
-	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
-			return nil
-		}
-		rel := dirKey(root, path)
-		seen[rel] = true
-		if prev, ok := dirs[rel]; ok {
-			if info, err := d.Info(); err == nil && info.ModTime().UnixNano() != prev {
-				changed = true // 该目录下发生过目录项增删改
-			}
-		} else {
-			changed = true // 树内出现了快照之外的新目录
-		}
-		return nil
-	})
-	if changed {
-		return true
-	}
-	for rel := range dirs {
-		if !seen[rel] {
-			return true // 快照中的目录已从树内消失
-		}
-	}
-	return false
 }

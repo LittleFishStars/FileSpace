@@ -111,6 +111,8 @@ func (a *app) waitAndShutdown() {
 	<-quit
 	fmt.Println("\n正在退出...")
 	saveLastShared(a.folders)
+	// 停止目录变更监听（释放 fsnotify 资源），统计缓存的扫描 goroutine 随进程退出自然结束
+	a.folders.Close()
 	// 通知其他节点本节点已退出：它们收到后立即把本节点从在线列表移除，
 	// 无需等待离线超时（60s）。
 	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), 2*time.Second)
