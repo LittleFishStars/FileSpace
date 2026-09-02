@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"hash/fnv"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -146,7 +145,9 @@ func (m *Manager) Remove(id string) error {
 	return ErrFolderNotFound
 }
 
-// List 返回共享文件夹列表（含实时统计的文件数 / 总大小 / 最近更新）。
+// List 返回共享文件夹列表（含根目录一层的实时统计：直接文件数 / 总大小 / 最近更新）。
+// 统计只扫一层、不递归遍历子目录：进入子文件夹后由 tree 接口按需懒加载，
+// 避免共享大目录时列表接口（本机管理页 / 节点发现）一次性遍历整个目录树。
 func (m *Manager) List() []model.FolderInfo {
 	m.mu.RLock()
 	folders := make([]Folder, len(m.folders))
@@ -154,7 +155,7 @@ func (m *Manager) List() []model.FolderInfo {
 	m.mu.RUnlock()
 	result := make([]model.FolderInfo, 0, len(folders))
 	for _, f := range folders {
-		count, size, updated := scanFolder(f.Path)
+		count, size, updated := scanTopLevel(f.Path)
 		result = append(result, model.FolderInfo{
 			ID:        f.ID,
 			Name:      f.Name,
@@ -187,27 +188,27 @@ func folderID(path string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// scanFolder 统计目录内文件数、总大小与最近修改时间。
-func scanFolder(root string) (count int, size int64, updated time.Time) {
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
+// scanTopLevel 统计目录根层（不递归）的直接文件数、总大小与最近修改时间。
+// 子目录只作为目录项存在、不深入统计；进入子目录后由 tree 接口按层懒加载。
+func scanTopLevel(root string) (count int, size int64, updated time.Time) {
+	entries, err := os.ReadDir(root)
+	// 根目录不存在时（被删除等）返回零值，避免目录列表中出现异常数据
+	if err != nil {
+		return 0, 0, time.Time{}
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
 		}
-		if d.IsDir() {
-			return nil
+		info, err := e.Info()
+		if err != nil {
+			continue
 		}
 		count++
-		if info, err := d.Info(); err == nil {
-			size += info.Size()
-			if info.ModTime().After(updated) {
-				updated = info.ModTime()
-			}
+		size += info.Size()
+		if info.ModTime().After(updated) {
+			updated = info.ModTime()
 		}
-		return nil
-	})
-	// 根目录不存在时（被删除等）返回零值，避免目录列表中出现异常数据
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0, 0, time.Time{}
 	}
 	return count, size, updated
 }

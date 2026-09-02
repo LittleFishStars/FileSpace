@@ -202,17 +202,25 @@ export default function LocalPanel() {
             ),
         },
         {
-            title: '文件数',
+            title: (
+                <Tooltip title="仅统计该文件夹第一层直接文件，不包含子文件夹内容（进入子文件夹后按需加载）">
+                    <span>首层文件数</span>
+                </Tooltip>
+            ),
             dataIndex: 'fileCount',
             key: 'fileCount',
-            width: 90,
+            width: 110,
             align: 'right' as const,
         },
         {
-            title: '总大小',
+            title: (
+                <Tooltip title="仅统计该文件夹第一层直接文件的大小，不包含子文件夹内容（进入子文件夹后按需加载）">
+                    <span>首层总大小</span>
+                </Tooltip>
+            ),
             dataIndex: 'totalSize',
             key: 'totalSize',
-            width: 110,
+            width: 120,
             align: 'right' as const,
             render: (value: number) => formatSize(value),
         },
