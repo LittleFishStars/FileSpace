@@ -62,12 +62,20 @@ func runBrowse(ctx context.Context, service, domain string, cache *Cache, fetchT
 			handleEntry(ctx, entry, cache, fetchTimeout)
 		}
 	}()
-	// Browse 同步阻塞直到 browCtx 结束；启动失败（网络异常等）立即返回，
-	// 交由 browseLoop 稍后重试，避免空等满一个 browseInterval。
+	// grandcat/zeroconf 的 Browse 是异步启动的：它在内部起 goroutine 执行
+	// mainloop（持续监听）与 periodicQuery（周期查询）后立即返回，并不阻塞
+	// 到 browCtx 结束。若启动成功后此处不等待就返回，browseLoop 会陷入无间隔
+	// 紧循环反复重建解析器：每次重建都重新 join IPv4/IPv6 组播组、发送 PTR
+	// 查询并堆积 goroutine/socket（此前实测 goroutine 编号在数秒内飙至上万、
+	// CPU 100%、mDNS 组播包达每秒数万，多网卡环境尤甚，形成组播风暴）。
+	// 因此 Browse 成功后必须阻塞等待 browCtx 到期（约 browseInterval），
+	// 让单轮 Browse 真正存活满一个周期，再由 browseLoop 按节奏重建；
+	// browCtx 到期（或外层 ctx 取消）时库内部 goroutine 自行清理连接。
 	if err := resolver.Browse(browCtx, service, domain, entries); err != nil {
 		log.Printf("mDNS 监听失败: %v", err)
 		return false
 	}
+	<-browCtx.Done()
 	return true
 }
 
