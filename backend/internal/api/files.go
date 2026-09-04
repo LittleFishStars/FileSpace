@@ -28,6 +28,23 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, full)
 }
 
+// handleTree 懒加载返回共享目录内的文件列表（?path=相对路径）。
+// 该文件夹设置了访问密码时，远程请求需携带绑定该文件夹密码的有效访问令牌（本机回环放行）。
+func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.authorized(r, id) {
+		writeError(w, http.StatusUnauthorized, "需要访问密码（未认证或令牌已过期）")
+		return
+	}
+	rel := r.URL.Query().Get("path")
+	entries, err := s.folders.Tree(id, rel)
+	if err != nil {
+		writeFolderError(w, err)
+		return
+	}
+	writeJSON(w, entries)
+}
+
 // setDownloadDisposition 设置 attachment 下载头（RFC 6266）：
 // filename 提供 ASCII 兜底文件名，filename*（RFC 5987）携带原始文件名，
 // 支持中文等非 ASCII 文件名；不支持 filename* 的客户端回退使用 filename。

@@ -25,6 +25,9 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 ## 后端约定
 
 - Go 1.27，模块名 `filespace`；依赖：gopsutil（跨平台采集）、zeroconf（mDNS）、yaml.v3（配置）
+- 包依赖为单向无环：`config / model / monitor / auth` 是稳定基础层（不依赖其他内部包），`share` 依赖 `auth + config + model`，`api` 依赖全部。新增代码勿制造反向依赖
+- **密码哈希与访问令牌是 `internal/auth` 包的单一契约**：`auth.Hash`（sha256 值类型）承载文件夹密码，`auth.Tokens` 负责签发/校验。`share`（存哈希、匹配登录密码）与 `api`（签发/校验令牌）都依赖它，勿在别处重复实现 sha256 或来回 hex↔bytes 转换；明文只允许出现在输入入口（配置文件/CLI/API 请求体）
+- `share` 包按职责分文件：`folder.go`(Folder 类型/ID/真实路径去重) `manager.go`(注册表增删查) `password.go`(密码哈希助手) `stats.go`(缓存与后台扫描) `tree.go`(目录列表与预览判定) `watcher.go`(fsnotify 监听)
 - 文件可预览性由**内容嗅探**判定（`http.DetectContentType`），`FileInfo.previewable` 供前端隐藏二进制文件的预览按钮，勿改回硬编码扩展名
 - `--web` 模式：`go:embed` 嵌入 `backend/cmd/filespace/web/` 下的前端静态资源，`HandlerWithStatic` 组合 API 路由与静态文件服务器
 - **开发模式 go run 依赖 embed 目录存在**：`//go:embed all:web` 在编译期要求 `backend/cmd/filespace/web/` 非空。仓库已提交 `.gitkeep` 占位（`git add -f` 强制跟踪，因目录被 gitignore），`scripts/dev.py` 启动后端前也会自动补齐（应对 `build.py --clean` 删除后直接 dev）；生产构建由 `build.py` 用真实静态资源覆盖该目录
@@ -35,7 +38,7 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 - Next.js 16 + `output: 'export'`（生产构建产出静态文件到 `web/out/`，由后端 go:embed 嵌入托管；**动态路由段无法预渲染**，用查询参数（如 `/folders?folderId=xxx`））
 - 开发模式：`next.config.ts` 的 `rewrites` 将 `/api/*` 反代到后端（http://127.0.0.1:8080）；生产模式：前端静态资源由后端直接托管，`/api/*` 同源访问无需反代
 - 构建脚本 `build.py` 流程：`pnpm build`（→ `web/out/`）→ 拷贝到 `backend/cmd/filespace/web/`（go:embed 源）→ `go build` 交叉编译
-- 卡片组件在 `web/app/_cards/`，页面在 `web/app/`，API 封装在 `web/app/_lib/api.ts`
+- 卡片组件在 `web/app/_cards/`，页面在 `web/app/`；`_lib/` 为共享层：`api.ts`(后端数据模型与请求封装)、`nodes.ts`(节点→主机列表派生)、`format.ts`(大小/时间格式化)、`use_nodes_data.ts`(节点+本机共享+peers 轮询的共享 hook，dashboard 与 nodes 面板复用)、`constants.ts`
 - 预览渲染路由用 `@smazeeapps/file-viewer` 的 `detectFileType`（勿硬编码扩展名）；不支持的非二进制格式以纯文本显示
 - **勿移除** `file_preview.tsx` 顶部的 `window.Prism = {manual: true}`（阻止 prism 自动 highlightAll 破坏代码逐行结构）
 - **勿移除** `package.json` 的 `postinstall`（修补 ProLayout 内部 Drawer 废弃 width 警告）
@@ -46,7 +49,7 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.3.6-2609041934`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.3.6` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
+- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.3.6-2609042009`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.3.6` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

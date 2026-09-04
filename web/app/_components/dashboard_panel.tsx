@@ -1,6 +1,6 @@
 'use client'
 
-import React, {useEffect, useState} from 'react';
+import React from 'react';
 import {Alert, Button, Spin, Statistic, Tag} from 'antd';
 import {
   CloudServerOutlined,
@@ -13,73 +13,22 @@ import Link from 'next/link';
 import {ProCard} from '@ant-design/pro-components';
 import BrandMark from './brand_mark';
 import {useTheme} from './app_theme';
-import {useAccess} from './access_context';
 import {formatSize} from '../_lib/format';
-import {
-  fetchFolders,
-  fetchPeers,
-  type ApiFolderInfo,
-  type ApiPeerInfo,
-} from '../_lib/api';
-import {PEER_REFRESH_INTERVAL} from '../_lib/constants';
+import {type ApiPeerInfo} from '../_lib/api';
+import {useNodesData} from '../_lib/use_nodes_data';
 
 /**
  * 主界面（/）：FileSpace 总览页。
  * 展示品牌（logo + 标题 + 软件版本）与全局统计：
  * 在线节点数（本机 + mDNS 发现的在线节点）、共享的总文件夹数、共享的总文件大小，
  * 并提供进入局域网节点 / 本机节点管理的快捷入口（远程访问时隐藏本机管理入口）。
+ *
+ * 数据获取与 peers 轮询由 useNodesData 统一提供（与局域网节点页共用）。
  */
 
 export default function DashboardPanel() {
     const {isDark, setMode} = useTheme();
-    // 本机节点信息由 AccessProvider 统一提供（含访问来源 local 标记）
-    const {node, status: nodeStatus} = useAccess();
-    const [localFolders, setLocalFolders] = useState<ApiFolderInfo[] | null>(null);
-    const [peers, setPeers] = useState<ApiPeerInfo[] | null>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        // 节点信息未就绪（加载中 / 拉取失败）时保持加载态，由 AccessProvider 状态兜底
-        if (!node) return;
-        let cancelled = false;
-        async function load() {
-            try {
-                const [fs, ps] = await Promise.all([
-                    fetchFolders(),
-                    fetchPeers(),
-                ]);
-                if (cancelled) return;
-                setLocalFolders(fs);
-                setPeers(ps);
-                setError(null);
-            } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : '无法连接后端服务');
-            }
-        }
-        // 定时刷新节点列表：节点上线/退出（含收到退出通知）后在线数即时更新，
-        // 无需手动刷新页面。
-        async function refreshPeers() {
-            try {
-                const ps = await fetchPeers();
-                if (!cancelled) setPeers(ps);
-            } catch {
-                // 轮询失败保持现有数据，等待下一次
-            }
-        }
-        // 页面从后台切回前台时立即刷新：浏览器会对后台标签页的定时器节流，
-        // 切回时可能带着过期数据，补拉一次让在线统计即时更新。
-        function onVisible() {
-            if (document.visibilityState === 'visible') refreshPeers();
-        }
-        load();
-        const timer = setInterval(refreshPeers, PEER_REFRESH_INTERVAL);
-        document.addEventListener('visibilitychange', onVisible);
-        return () => {
-            cancelled = true;
-            clearInterval(timer);
-            document.removeEventListener('visibilitychange', onVisible);
-        };
-    }, [node]);
+    const {node, nodeStatus, localFolders, peers, error} = useNodesData();
 
     // 统计口径：
     // - 在线节点数 = 本机（恒在线）+ mDNS 发现的在线节点（缓存已排除本机）。

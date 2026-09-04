@@ -48,15 +48,12 @@ func sharedFromDir(path string) (config.SharedFolder, error) {
 }
 
 // mergeShared 把 -d/--dir 目录追加到配置文件的共享列表并去重。
-// 去重同时考虑精确路径与符号链接解析后的真实路径（与运行时 Add 语义一致）；
+// 去重同时考虑精确路径与符号链接解析后的真实路径（复用 share.RealPath，与运行时 Add 同口径）；
 // -d 指定的目录做存在性校验，配置文件中的路径不校验（允许临时失效的目录继续占位）。
 func mergeShared(shared []config.SharedFolder, dirs []string) []config.SharedFolder {
 	seen := make(map[string]bool, len(shared)+len(dirs))
 	keep := func(p string) bool {
-		key := p
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			key = r
-		}
+		key := share.RealPath(p)
 		if seen[key] {
 			return false
 		}
