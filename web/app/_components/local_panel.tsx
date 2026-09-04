@@ -106,7 +106,8 @@ export default function LocalPanel() {
     }, [node, refresh]);
 
     /**
-     * 添加共享文件夹：优先调用后端在本机弹出系统原生目录选择器，选中后询问是否设置访问密码；
+     * 添加共享文件夹：优先调用后端在本机弹出系统原生目录选择器，选中后询问是否设置访问密码
+     * （可设密码，或点「跳过」直接开放共享）；
      * 系统选择器不可用（如缺少 zenity/kdialog）时降级为手动输入弹窗（同样可设置密码）。
      */
     const handleAddClick = async () => {
@@ -118,7 +119,7 @@ export default function LocalPanel() {
             if (!path) throw new Error('未获取到所选目录路径');
             setPendingPath(path);
             setPwText('');
-            setPwOpen(true); // 询问是否为该文件夹设置访问密码（可选，留空表示开放）
+            setPwOpen(true); // 询问是否为该文件夹设置访问密码（可设密码，或点「跳过」直接开放共享）
         } catch (e) {
             message.error(e instanceof Error ? e.message : '添加失败');
             setAddOpen(true); // 降级：手动输入路径
@@ -127,16 +128,25 @@ export default function LocalPanel() {
         }
     };
 
-    /** 系统目录选择器选中后确认添加（可为该文件夹设置访问密码） */
-    const handleAddWithPassword = async () => {
+    /** 关闭「设置访问密码」弹窗并清空待添加状态 */
+    const closeAddPassword = () => {
+        setPwOpen(false);
+        setPendingPath(null);
+        setPwText('');
+    };
+
+    /**
+     * 添加所选共享文件夹：passwd 非空由「确认添加」触发（设置访问密码），
+     * passwd 为空由「跳过」触发（不设密码、对局域网开放）。
+     */
+    const submitAddFolder = async (passwd: string) => {
         if (!pendingPath) return;
         setAdding(true);
         try {
-            const passwd = pwText.trim();
             const added = await addFolders([pendingPath], passwd);
-            message.success(`已添加共享文件夹「${added[0]?.name ?? pendingPath}」${passwd ? '（已设置访问密码）' : ''}`);
-            setPwOpen(false);
-            setPendingPath(null);
+            const name = added[0]?.name ?? pendingPath;
+            message.success(`已添加共享文件夹「${name}」（${passwd ? '已设置' : '未设置'}访问密码）`);
+            closeAddPassword();
             setRefresh((r) => r + 1);
         } catch (e) {
             message.error(e instanceof Error ? e.message : '添加失败');
@@ -144,6 +154,12 @@ export default function LocalPanel() {
             setAdding(false);
         }
     };
+
+    /** 「确认添加」：为所选文件夹设置访问密码后添加（密码为空时该按钮禁用，不设密码请走「跳过」） */
+    const handleAddWithPassword = () => submitAddFolder(pwText.trim());
+
+    /** 「跳过」：不设置访问密码，直接把该文件夹添加为开放共享 */
+    const handleSkipPassword = () => submitAddFolder('');
 
     /** 手动输入多行路径并添加共享（系统目录选择器不可用时的备用方式，可为这些文件夹设置访问密码） */
     const handleAddManual = async () => {
@@ -448,29 +464,42 @@ export default function LocalPanel() {
         <>
             {content}
 
-            {/* 系统目录选择器选中后：为所选文件夹设置访问密码（可选，留空表示开放） */}
+            {/* 系统目录选择器选中后：为所选文件夹设置访问密码（不想要可点「跳过」直接开放共享） */}
             <Modal
                 open={pwOpen}
                 title="设置访问密码"
-                okText="确认添加"
-                cancelText="取消"
-                confirmLoading={adding}
-                onOk={handleAddWithPassword}
-                onCancel={() => {
-                    setPwOpen(false);
-                    setPendingPath(null);
-                }}
+                onCancel={closeAddPassword}
+                footer={
+                    <div className="flex items-center justify-between">
+                        <Button loading={adding} onClick={handleSkipPassword}>跳过</Button>
+                        <Space>
+                            <Button disabled={adding} onClick={closeAddPassword}>取消</Button>
+                            <Button
+                                type="primary"
+                                disabled={!pwText.trim()}
+                                loading={adding}
+                                onClick={handleAddWithPassword}
+                            >
+                                确认添加
+                            </Button>
+                        </Space>
+                    </div>
+                }
             >
                 <div className="mb-1 text-sm text-neutral-600 dark:text-neutral-300">
                     将共享文件夹：<span className="font-medium">{pendingPath ?? ''}</span>
                 </div>
                 <div className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
-                    设置后，其他节点需输入密码才能查看/下载该文件夹的内容（本机不受影响）。留空则不设置密码。
+                    设置后，其他节点需输入密码才能查看/下载该文件夹的内容（本机不受影响）。
+                    不想设置密码，点击左下角「跳过」直接开放共享。
                 </div>
                 <Input.Password
                     value={pwText}
                     onChange={(e) => setPwText(e.target.value)}
-                    placeholder="访问密码（可选）"
+                    onPressEnter={() => {
+                        if (pwText.trim()) handleAddWithPassword();
+                    }}
+                    placeholder="访问密码"
                     autoFocus
                 />
             </Modal>
