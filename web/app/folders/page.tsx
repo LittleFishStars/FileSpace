@@ -28,6 +28,8 @@ import {useSearchParams} from 'next/navigation';
 import AppShell from '../_components/app_shell';
 import {useAccess} from '../_components/access_context';
 import FilePreview from '../_components/file_preview';
+import {errMsg} from '../_lib/errors';
+import {storageGet, storageRemove, storageSet} from '../_lib/storage';
 import {formatSize, formatTime} from '../_lib/format';
 import {
   ApiError,
@@ -141,7 +143,7 @@ function FolderBrowser() {
                 const needAuth = !local && folderAuth;
                 setAuthRequired(needAuth);
                 if (needAuth) {
-                    const saved = localStorage.getItem(tokenKey(base, folderId));
+                    const saved = storageGet(tokenKey(base, folderId));
                     if (saved) {
                         setToken(saved);
                     } else {
@@ -153,7 +155,7 @@ function FolderBrowser() {
                     setToken(null);
                 }
             } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
+                if (!cancelled) setError(errMsg(e, '加载失败'));
             }
         }
         load(node);
@@ -181,13 +183,13 @@ function FolderBrowser() {
                 if (cancelled) return;
                 if (e instanceof ApiError && e.status === 401) {
                     // 令牌缺失 / 已过期 / 密码不符：清除并重新要求输入密码
-                    localStorage.removeItem(tokenKey(remoteBase, folderId));
+                    storageRemove(tokenKey(remoteBase, folderId));
                     setToken(null);
                     setAuthError('访问令牌已失效，请重新输入密码');
                     setAuthOpen(true);
                     return;
                 }
-                setError(e instanceof Error ? e.message : '加载失败');
+                setError(errMsg(e, '加载失败'));
             }
         }
         load();
@@ -202,11 +204,11 @@ function FolderBrowser() {
         setAuthError(null);
         try {
             const t = await authLogin(remoteBase, authInput.trim());
-            localStorage.setItem(tokenKey(remoteBase, folderId), t);
+            storageSet(tokenKey(remoteBase, folderId), t);
             setToken(t);
             setAuthOpen(false);
         } catch (e) {
-            setAuthError(e instanceof Error ? e.message : '认证失败');
+            setAuthError(errMsg(e, '认证失败'));
         } finally {
             setAuthSubmitting(false);
         }
@@ -227,7 +229,7 @@ function FolderBrowser() {
             await openFile(folderId, record.path);
             message.success(`已调用系统默认应用打开：${record.name}`);
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '打开失败');
+            message.error(errMsg(e, '打开失败'));
         } finally {
             setOpening(null);
         }

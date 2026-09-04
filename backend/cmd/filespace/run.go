@@ -31,14 +31,41 @@ type app struct {
 	cancel     context.CancelFunc
 }
 
-// runServer 启动纯后端 API 服务（无前端），等待退出信号后优雅关闭。
-func runServer(cfg *config.Config, configPath string) {
+// runServer 启动后端服务并等待退出信号后优雅关闭。
+// withWeb 为 true 时（--web 模式）同时托管前端静态资源并在浏览器中打开界面。
+func runServer(cfg *config.Config, configPath string, withWeb bool) {
 	a := &app{cfg: cfg, configPath: configPath}
 	a.build()
-	a.buildHTTPServer(nil) // nil → 纯 API，不托管静态文件
+
+	// staticFS 为 nil → 仅纯 API 路由；非 nil → 组合 API 与静态文件服务器（--web 模式）
+	var staticFS http.FileSystem
+	if withWeb {
+		var err error
+		staticFS, err = webFS() // 读取 go:embed 嵌入的前端静态资源（见 web.go）
+		if err != nil {
+			log.Fatalf("初始化前端静态资源失败: %v", err)
+		}
+	}
+	a.buildHTTPServer(staticFS)
 	a.startHTTP()
 	a.startDiscovery()
+	a.announceStartup(withWeb)
 	a.waitAndShutdown()
+}
+
+// announceStartup 打印启动信息：--web 模式给出界面地址并尝试打开浏览器
+// （本机打开界面用回环地址：局域网地址可能因防火墙/VPN/多网卡无法从本机浏览器访问，
+// 局域网其他节点仍可通过 http://<本机IP>:端口 访问同一界面）；
+// 纯后端模式只打印 API 地址。
+func (a *app) announceStartup(withWeb bool) {
+	if withWeb {
+		url := fmt.Sprintf("http://127.0.0.1:%d", a.cfg.ListenPort)
+		fmt.Printf("🌐 文件空间界面已启动: %s（局域网访问: http://%s:%d）\n",
+			url, a.mon.IP(), a.cfg.ListenPort)
+		openBrowser(url)
+		return
+	}
+	fmt.Printf("🌐 后端 API 已启动: http://%s:%d\n", a.mon.IP(), a.cfg.ListenPort)
 }
 
 // build 组装各组件（监控、共享管理器、发现缓存）。
@@ -74,19 +101,13 @@ func (a *app) buildHTTPServer(staticFS http.FileSystem) {
 	a.httpSrv = &http.Server{Addr: fmt.Sprintf(":%d", a.cfg.ListenPort), Handler: handler}
 }
 
-// startHTTP 后台启动 HTTP 服务并打印启动信息。
+// startHTTP 后台启动 HTTP 服务。
 func (a *app) startHTTP() {
 	go func() {
-		a.printStartup()
 		if err := a.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP 服务启动失败: %v", err)
 		}
 	}()
-}
-
-// printStartup 打印后端 API 地址（共享目录列表已由 resolveSharedFolders 打印）。
-func (a *app) printStartup() {
-	fmt.Printf("🌐 后端 API 已启动: http://%s:%d\n", a.mon.IP(), a.cfg.ListenPort)
 }
 
 // startDiscovery 注册 mDNS 服务并启动节点发现。

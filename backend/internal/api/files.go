@@ -9,9 +9,8 @@ import (
 // handleDownload 下载共享目录内的文件（?path=相对路径，支持 Range 断点续传）。
 // 该文件夹设置了访问密码时，远程请求需携带绑定该文件夹密码的有效访问令牌（本机回环放行）。
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if !s.authorized(r, id) {
-		writeError(w, http.StatusUnauthorized, "需要访问密码（未认证或令牌已过期）")
+	id, ok := s.authorizedFolderID(w, r)
+	if !ok {
 		return
 	}
 	rel := r.URL.Query().Get("path")
@@ -31,9 +30,8 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 // handleTree 懒加载返回共享目录内的文件列表（?path=相对路径）。
 // 该文件夹设置了访问密码时，远程请求需携带绑定该文件夹密码的有效访问令牌（本机回环放行）。
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if !s.authorized(r, id) {
-		writeError(w, http.StatusUnauthorized, "需要访问密码（未认证或令牌已过期）")
+	id, ok := s.authorizedFolderID(w, r)
+	if !ok {
 		return
 	}
 	rel := r.URL.Query().Get("path")

@@ -25,7 +25,7 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 ## 后端约定
 
 - Go 1.27，模块名 `filespace`；依赖：gopsutil（跨平台采集）、zeroconf（mDNS）、yaml.v3（配置）
-- 包依赖为单向无环：`config / model / monitor / auth` 是稳定基础层（不依赖其他内部包），`share` 依赖 `auth + config + model`，`api` 依赖全部。新增代码勿制造反向依赖
+- 包依赖为单向无环：`config / model / monitor / auth / desktop` 是稳定基础层（不依赖其他内部包；desktop 提供「系统默认应用打开文件/URL」的平台分发，api 打开共享文件与 cmd --web 打开浏览器共用），`share` 依赖 `auth + config + model`，`api` 依赖全部。新增代码勿制造反向依赖
 - **密码哈希与访问令牌是 `internal/auth` 包的单一契约**：`auth.Hash`（sha256 值类型）承载文件夹密码，`auth.Tokens` 负责签发/校验。`share`（存哈希、匹配登录密码）与 `api`（签发/校验令牌）都依赖它，勿在别处重复实现 sha256 或来回 hex↔bytes 转换；明文只允许出现在输入入口（配置文件/CLI/API 请求体）
 - `share` 包按职责分文件：`folder.go`(Folder 类型/ID/真实路径去重) `manager.go`(注册表增删查) `password.go`(密码哈希助手) `stats.go`(缓存与后台扫描) `tree.go`(目录列表与预览判定) `watcher.go`(fsnotify 监听)
 - 文件可预览性由**内容嗅探**判定（`http.DetectContentType`），`FileInfo.previewable` 供前端隐藏二进制文件的预览按钮，勿改回硬编码扩展名
@@ -51,7 +51,7 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.4.0-2609042121`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.4.0` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
+- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.4.1-2609042230`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.4.1` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

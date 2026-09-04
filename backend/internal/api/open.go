@@ -2,8 +2,8 @@ package api
 
 import (
 	"net/http"
-	"os/exec"
-	"runtime"
+
+	"filespace/internal/desktop"
 )
 
 // handleOpenFile 用系统默认应用打开本机共享目录内的文件（?path=相对路径）。
@@ -21,26 +21,9 @@ func (s *Server) handleOpenFile(w http.ResponseWriter, r *http.Request) {
 		writeFolderError(w, err)
 		return
 	}
-	if err := openWithDefaultApp(full); err != nil {
+	if err := desktop.Open(full); err != nil {
 		writeError(w, http.StatusInternalServerError, "打开失败: "+err.Error())
 		return
 	}
 	writeJSON(w, map[string]any{"opened": full})
-}
-
-// openWithDefaultApp 调用系统默认应用打开文件（异步启动，不等待应用退出）。
-//   - Linux:  xdg-open
-//   - macOS:  open
-//   - Windows: cmd /c start
-func openWithDefaultApp(path string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", path)
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", path)
-	default:
-		cmd = exec.Command("xdg-open", path)
-	}
-	return cmd.Start()
 }

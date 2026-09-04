@@ -2,8 +2,10 @@ package api
 
 import (
 	"io"
+	"mime"
 	"net/http"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -40,10 +42,14 @@ func serveStaticFile(fsys http.FileSystem, w http.ResponseWriter, r *http.Reques
 		return false
 	}
 	if status != http.StatusOK {
-		// 非 200（如 404 回退页）：手动写响应，避免 ServeContent 重复 WriteHeader 告警
+		// 非 200（如 404 回退页）：手动写响应，避免 ServeContent 重复 WriteHeader 告警。
+		// 按扩展名补 Content-Type（如 404.html → text/html），避免浏览器错误嗅探。
 		data, err := io.ReadAll(f)
 		if err != nil {
 			return false
+		}
+		if ct := mime.TypeByExtension(filepath.Ext(name)); ct != "" {
+			w.Header().Set("Content-Type", ct)
 		}
 		w.WriteHeader(status)
 		_, _ = w.Write(data)

@@ -33,7 +33,8 @@ export default function DashboardPanel() {
     // 统计口径：
     // - 在线节点数 = 本机（恒在线）+ mDNS 发现的在线节点（缓存已排除本机）。
     // - 共享文件夹数 / 总文件大小 = 本机共享 + 全部可见节点（含离线节点的缓存数据）。
-    const remotePeers = node && peers ? peers : [];
+    // 数据未就绪（peers 为 null）时按空列表计：页面由加载态分支兜底，不会渲染统计。
+    const remotePeers = peers ?? [];
     const onlineNodes = 1 + remotePeers.filter((p) => p.online).length;
     const peerFolders = remotePeers.flatMap((p: ApiPeerInfo) => p.folders);
     const totalFolders = (localFolders?.length ?? 0) + peerFolders.length;

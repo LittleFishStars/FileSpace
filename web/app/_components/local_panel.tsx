@@ -30,6 +30,7 @@ import {useRouter} from 'next/navigation';
 import {ProCard} from '@ant-design/pro-components';
 import NodeInfoCard from '../_cards/node_info_card';
 import {useAccess} from './access_context';
+import {errMsg} from '../_lib/errors';
 import {formatSize, formatTime} from '../_lib/format';
 import {
     addFolders,
@@ -95,7 +96,7 @@ export default function LocalPanel() {
                     refreshTimer = window.setTimeout(() => setRefresh((r) => r + 1), 2500);
                 }
             } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
+                if (!cancelled) setError(errMsg(e, '加载失败'));
             }
         }
         load();
@@ -121,7 +122,7 @@ export default function LocalPanel() {
             setPwText('');
             setPwOpen(true); // 询问是否为该文件夹设置访问密码（可设密码，或点「跳过」直接开放共享）
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '添加失败');
+            message.error(errMsg(e, '添加失败'));
             setAddOpen(true); // 降级：手动输入路径
         } finally {
             setAdding(false);
@@ -149,7 +150,7 @@ export default function LocalPanel() {
             closeAddPassword();
             setRefresh((r) => r + 1);
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '添加失败');
+            message.error(errMsg(e, '添加失败'));
         } finally {
             setAdding(false);
         }
@@ -181,7 +182,7 @@ export default function LocalPanel() {
             setAddPasswd('');
             setRefresh((r) => r + 1);
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '添加失败');
+            message.error(errMsg(e, '添加失败'));
         } finally {
             setAdding(false);
         }
@@ -195,7 +196,7 @@ export default function LocalPanel() {
             message.success('已移除共享文件夹');
             setRefresh((r) => r + 1);
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '移除失败');
+            message.error(errMsg(e, '移除失败'));
         } finally {
             setRemoving(null);
         }
@@ -220,7 +221,7 @@ export default function LocalPanel() {
             setPwEditText('');
             setRefresh((x) => x + 1);
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '保存失败');
+            message.error(errMsg(e, '保存失败'));
         } finally {
             setPwEditSubmitting(false);
         }
@@ -237,7 +238,7 @@ export default function LocalPanel() {
             setPwEditText('');
             setRefresh((x) => x + 1);
         } catch (e) {
-            message.error(e instanceof Error ? e.message : '移除密码失败');
+            message.error(errMsg(e, '移除密码失败'));
         } finally {
             setPwRemoving(null);
         }

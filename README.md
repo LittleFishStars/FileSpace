@@ -46,13 +46,14 @@
 │   │   ├── api/          # HTTP API 路由与处理（server 路由装配 / static 托管 / respond 响应助手）
 │   │   ├── auth/         # 访问密码哈希与令牌签发校验（share 与 api 共同依赖的单一契约）
 │   │   ├── config/       # 配置结构体与加载（默认配置文件创建/写回）
+│   │   ├── desktop/      # 系统默认应用打开文件/URL（api 打开共享文件与 --web 打开浏览器共用）
 │   │   ├── discovery/    # mDNS 服务注册与发现
 │   │   ├── model/        # 数据模型（与前端对齐）
 │   │   ├── monitor/      # 系统状态采集（主机名 / 系统 / 运行时间 / IP，跨平台）
 │   │   ├── share/        # 共享目录：注册表(manager) / 密码(password) / 统计缓存(stats) / 扫描(tree) / 监听(watcher)
 │   │   └── state/        # 本地运行锁
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.4.0-2609042121）
+│   └── version.go        # 版本号（当前 0.4.1-2609042230）
 └── build/                # 构建产物（gitignored）：build/<平台>/（后端，含嵌入的前端静态资源）
 ```
 

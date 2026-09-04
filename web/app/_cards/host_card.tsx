@@ -10,8 +10,9 @@ import {
   LaptopOutlined,
   LockOutlined,
 } from '@ant-design/icons'
-import FolderCard, { type FolderInfo } from './folder_card'
+import FolderCard from './folder_card'
 import NodeInfoCard from './node_info_card'
+import type { ApiFolderInfo } from '../_lib/api'
 
 /**
  * 节点卡片。
@@ -30,7 +31,7 @@ export interface HostInfo {
   softwareVersion: string
   /** 该节点是否设置了共享访问密码（访问其文件需输入密码） */
   auth?: boolean
-  folders: FolderInfo[]
+  folders: ApiFolderInfo[]
 }
 
 export default function HostCard({ host }: { host: HostInfo }) {

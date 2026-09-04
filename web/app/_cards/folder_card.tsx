@@ -4,34 +4,23 @@ import { FolderOutlined, LockOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
 import { Tooltip } from 'antd'
 import { formatSize, formatTime } from '../_lib/format'
+import type { ApiFolderInfo } from '../_lib/api'
 
 /**
  * 文件夹卡片。
  * 展示共享文件夹的核心信息：文件夹名、文件数与总大小。
+ * 直接复用后端的 ApiFolderInfo 数据模型（不另造精简接口，避免重复映射）。
  */
-export interface FolderInfo {
-  id: string
-  name: string
-  /** 总大小（字节） */
-  totalSize: number
-  /** 文件数量（可选） */
-  fileCount?: number
-  /** 最近更新时间（可选） */
-  updatedAt?: string
-  /** 该文件夹是否设置了访问密码（远程访问需先认证） */
-  auth?: boolean
-}
-
 export default function FolderCard({
   folder,
   className,
 }: {
-  folder: FolderInfo
+  folder: ApiFolderInfo
   className?: string
 }) {
   // 全量统计：文件数与总大小由后端后台扫描缓存（目录较大时首次显示可能有短暂延迟）
   const stats = [
-    { label: '文件', value: String(folder.fileCount ?? 0) },
+    { label: '文件', value: String(folder.fileCount) },
     { label: '总大小', value: formatSize(folder.totalSize) },
   ]
 
@@ -58,11 +47,9 @@ export default function FolderCard({
               </Tooltip>
             )}
           </div>
-          {folder.updatedAt && (
-            <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              {formatTime(folder.updatedAt)} 更新
-            </div>
-          )}
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">
+            {formatTime(folder.updatedAt)} 更新
+          </div>
         </div>
       </div>
 
