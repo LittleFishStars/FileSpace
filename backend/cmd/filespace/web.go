@@ -28,8 +28,8 @@ func webFS() (http.FileSystem, error) {
 
 // runServerWithWeb 启动后端 API 服务并托管前端静态资源，然后在浏览器中打开界面。
 // 前端静态资源由构建脚本从 web/out/ 拷贝到 backend/cmd/filespace/web/，通过 go:embed 嵌入。
-func runServerWithWeb(cfg *config.Config) {
-	a := &app{cfg: cfg}
+func runServerWithWeb(cfg *config.Config, configPath string) {
+	a := &app{cfg: cfg, configPath: configPath}
 	a.build()
 	staticFS, err := webFS()
 	if err != nil {

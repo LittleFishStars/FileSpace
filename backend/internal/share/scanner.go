@@ -221,8 +221,8 @@ func (m *Manager) Remove(id string) error {
 	return nil
 }
 
-// SharedSnapshot 返回当前共享目录列表（含访问密码），供持久化「上次共享记录」使用，
-// 使运行中设置/修改的文件夹密码在重启后仍能恢复。
+// SharedSnapshot 返回当前共享目录列表（含密码哈希），供写回配置文件使用，
+// 使运行中添加/移除/修改的共享目录与密码在重启后仍保持。
 func (m *Manager) SharedSnapshot() []config.SharedFolder {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

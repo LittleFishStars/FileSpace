@@ -4,7 +4,6 @@ package api
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
-	"filespace/internal/state"
 )
 
 // Options 构建 Server 所需的依赖。
@@ -24,38 +22,41 @@ type Options struct {
 	Folders *share.Manager
 	Monitor *monitor.Monitor
 	Peers   *discovery.Cache
+	// Persist 共享列表变更（添加/移除/修改密码）后的持久化回调，
+	// 由外层提供（通常是把当前共享列表写回配置文件）。可为 nil。
+	Persist func()
 }
 
 // Server HTTP API 服务。
 type Server struct {
-	cfg     *config.Config
-	nodeID  string
-	version string
-	folders *share.Manager
-	monitor *monitor.Monitor
-	peers   *discovery.Cache
-	auth    *authManager // 访问令牌管理（文件夹级密码认证）
+	cfg       *config.Config
+	nodeID    string
+	version   string
+	folders   *share.Manager
+	monitor   *monitor.Monitor
+	peers     *discovery.Cache
+	persistFn func()       // 共享列表变更后的持久化回调
+	auth      *authManager // 访问令牌管理（文件夹级密码认证）
 }
 
 // NewServer 创建 API 服务。
 func NewServer(opts Options) *Server {
 	return &Server{
-		cfg:     opts.Config,
-		nodeID:  opts.NodeID,
-		version: opts.Version,
-		folders: opts.Folders,
-		monitor: opts.Monitor,
-		peers:   opts.Peers,
-		auth:    newAuthManager(),
+		cfg:       opts.Config,
+		nodeID:    opts.NodeID,
+		version:   opts.Version,
+		folders:   opts.Folders,
+		monitor:   opts.Monitor,
+		peers:     opts.Peers,
+		persistFn: opts.Persist,
+		auth:      newAuthManager(),
 	}
 }
 
-// persistLastShared 把当前共享目录（含访问密码）立即写入上次共享记录。
-// 在添加/移除共享、设置/修改/移除密码等运行中变更后调用，使密码与列表在
-// 进程被强杀（无法走优雅退出落盘）时也不会丢失；优雅退出时仍会再写一次兜底。
-func (s *Server) persistLastShared() {
-	if err := state.SaveLastShared(s.folders.SharedSnapshot()); err != nil {
-		log.Printf("记录共享目录失败: %v", err)
+// persistChanged 触发共享列表变更后的持久化回调（外层写回配置文件）。
+func (s *Server) persistChanged() {
+	if s.persistFn != nil {
+		s.persistFn()
 	}
 }
 

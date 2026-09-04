@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -16,16 +15,16 @@ import (
 )
 
 // handoffToExisting 已有后端在运行（运行锁被持有）时，把本次操作交给它：
-//   - 无 -P：仅支持用目录参数或 -a 追加共享目录；
-//   - 带 -P（含空值）：需与目录参数配合，为这些目录设置/修改/移除访问密码——
+//   - 无 -P：仅支持用 -d/--dir 追加共享目录；
+//   - 带 -P（含空值）：需与 -d/--dir 配合，为这些目录设置/修改/移除访问密码——
 //     目录已共享则修改其密码（空值移除），未共享则作为新增共享设置密码。
-func handoffToExisting(port int, opts *options, args []string) {
-	paths := appendPaths(args, opts.addCwd)
+func handoffToExisting(port int, opts *options) {
+	paths := opts.dirs
 	if len(paths) == 0 {
 		if opts.hasPasswd {
-			log.Fatalf("检测到已有 filespace 后端在运行（端口 %d）：修改/移除密码需要指定目标目录，例如 filespace <目录> -P <密码>（-P '' 移除密码）", port)
+			log.Fatalf("检测到已有 filespace 后端在运行（端口 %d）：修改/移除密码需要指定目标目录，例如 filespace -d <目录> -P <密码>（-P '' 移除密码）", port)
 		}
-		log.Fatalf("检测到已有 filespace 后端在运行（端口 %d），仅支持使用目录参数或 -a 追加共享目录（--this 等独占模式不适用）", port)
+		log.Fatalf("检测到已有 filespace 后端在运行（端口 %d），仅支持使用 -d/--dir 追加共享目录（无参数启动、--web 等独占模式不适用）", port)
 	}
 	if opts.hasPasswd {
 		handoffSetPasswords(port, paths, opts.passwd)
@@ -95,17 +94,6 @@ type apiError struct {
 
 func (e *apiError) Error() string {
 	return fmt.Sprintf("HTTP %d: %s", e.status, e.msg)
-}
-
-// appendPaths 汇总本次要追加的目录：目录参数 +（-a 时的）当前目录。
-func appendPaths(args []string, addCwd bool) []string {
-	paths := make([]string, 0, len(args)+1)
-	paths = append(paths, args...)
-	if addCwd {
-		cwd, _ := os.Getwd()
-		paths = append(paths, cwd)
-	}
-	return paths
 }
 
 // probeBackend 探测端口上是否已有 filespace 后端在运行：

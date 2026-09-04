@@ -52,7 +52,7 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 		}
 		added = append(added, model.FolderInfo{ID: f.ID, Name: f.Name, Path: f.Path, Auth: f.PasswdHash != ""})
 	}
-	s.persistLastShared() // 立即落盘，避免进程被强杀时新增共享（含密码）丢失
+	s.persistChanged() // 立即写回配置文件，避免进程被强杀时新增共享（含密码）丢失
 	writeJSON(w, map[string]any{"added": added})
 }
 
@@ -80,7 +80,7 @@ func (s *Server) handleRemoveFolder(w http.ResponseWriter, r *http.Request) {
 		writeFolderError(w, err)
 		return
 	}
-	s.persistLastShared() // 立即落盘，避免进程被强杀后已移除的目录重新复活
+	s.persistChanged() // 立即写回配置文件，避免进程被强杀后已移除的目录重新复活
 	writeJSON(w, map[string]any{"removed": req.ID})
 }
 
@@ -115,7 +115,7 @@ func (s *Server) handleSetFolderPassword(w http.ResponseWriter, r *http.Request)
 		writeFolderError(w, err)
 		return
 	}
-	s.persistLastShared() // 立即落盘（仅存哈希），重启后仍按新密码恢复
+	s.persistChanged() // 立即写回配置文件（仅存哈希），重启后仍按新密码生效
 	writeJSON(w, map[string]any{"updated": f.ID, "name": f.Name, "auth": f.PasswdHash != ""})
 }
 

@@ -5,86 +5,87 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"filespace/internal/config"
-	"filespace/internal/state"
 )
 
-// resolveSharedFolders 解析最终共享目录列表，优先级：
-// 目录参数 > 配置文件 shared_folders > 上次共享记录 > 当前目录；
-// --this 仅共享当前目录（跳过恢复），-a 在结果上额外追加当前目录。
-// 最后用默认密码（-P/--passwd 或配置 passwd）填充未显式设置密码的文件夹。
-func resolveSharedFolders(cfg *config.Config, opts *options, args []string) {
-	if opts.thisOnly {
-		useThisOnly(cfg, args, opts.passwd)
+// resolveSharedFolders 解析最终共享目录列表：
+// 配置文件 shared_folders 为基，-d/--dir 指定的目录追加到其后（重复路径自动去重）。
+// 无共享目录时不共享任何文件夹（也不恢复上次共享 / 共享当前目录）。
+// 最后用默认密码（cfg.Passwd，已合并 -P/--passwd 覆盖）填充未显式设置密码的文件夹。
+func resolveSharedFolders(cfg *config.Config, dirs []string) {
+	if len(dirs) > 0 {
+		cfg.Shared = mergeShared(cfg.Shared, dirs)
 	}
-	if len(args) > 0 {
-		cfg.Shared = sharedFromPaths(args, opts.passwd)
-	}
-	if len(cfg.Shared) == 0 {
-		restoreOrCurrent(cfg, opts.passwd)
-	}
-	if opts.addCwd {
-		addCurrentDir(cfg, opts.passwd)
-	}
-	applyDefaultPasswd(cfg, opts.passwd)
-}
-
-// useThisOnly 处理 --this：仅共享当前目录，与目录参数 / 配置文件中的 shared_folders 互斥。
-func useThisOnly(cfg *config.Config, args []string, passwd string) {
-	if len(args) > 0 {
-		log.Fatalf("不能同时使用 --this 与目录参数")
-	}
+	applyDefaultPasswd(cfg, cfg.Passwd)
 	if len(cfg.Shared) > 0 {
-		log.Fatalf("不能同时使用 --this 与配置文件中的 shared_folders")
-	}
-	cwd, _ := os.Getwd()
-	cfg.Shared = sharedFromPaths([]string{cwd}, passwd)
-	fmt.Printf("已指定 --this，仅共享当前目录: %s\n", cwd)
-}
-
-// sharedFromPaths 由路径列表构造共享目录配置（名称取路径基名，passwd 为默认访问密码）。
-func sharedFromPaths(paths []string, passwd string) []config.SharedFolder {
-	shared := make([]config.SharedFolder, 0, len(paths))
-	for _, p := range paths {
-		shared = append(shared, config.SharedFolder{Path: p, Name: filepath.Base(p), Passwd: passwd})
-	}
-	return shared
-}
-
-// restoreOrCurrent 未指定任何共享目录：优先恢复上次退出前共享的目录（含各自访问密码），
-// 无记录时回退到当前目录。本次 -P/--passwd 作为默认密码仅覆盖恢复记录中未显式设密的文件夹。
-func restoreOrCurrent(cfg *config.Config, passwd string) {
-	if last := state.LoadLastShared(); len(last) > 0 {
-		cfg.Shared = last
-		applyDefaultPasswd(cfg, passwd)
-		paths := make([]string, 0, len(last))
-		for _, f := range last {
+		paths := make([]string, 0, len(cfg.Shared))
+		for _, f := range cfg.Shared {
 			paths = append(paths, f.Path)
 		}
-		fmt.Printf("未指定共享目录，恢复上次共享的目录: %s\n", strings.Join(paths, ", "))
-		return
+		fmt.Printf("📂 共享 %d 个目录: %s\n", len(cfg.Shared), strings.Join(paths, ", "))
+	} else {
+		fmt.Println("📂 未配置共享目录，后端仅提供 API（用 -d/--dir 或配置文件 shared_folders 添加）")
 	}
-	cwd, _ := os.Getwd()
-	cfg.Shared = sharedFromPaths([]string{cwd}, passwd)
-	fmt.Printf("未指定共享目录，默认共享当前目录: %s\n", cwd)
 }
 
-// addCurrentDir 处理 -a/--add：在解析结果基础上额外共享当前目录（已在列表中则跳过）。
-func addCurrentDir(cfg *config.Config, passwd string) {
-	cwd, _ := os.Getwd()
-	if sharedContains(cfg.Shared, cwd) {
-		fmt.Printf("已指定 -a，当前目录已在共享列表中: %s\n", cwd)
-		return
+// sharedFromDir 校验单个 -d/--dir 目录并构造共享配置（名称取路径基名）。
+func sharedFromDir(path string) (config.SharedFolder, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return config.SharedFolder{}, err
 	}
-	cfg.Shared = append(cfg.Shared, config.SharedFolder{Path: cwd, Name: filepath.Base(cwd), Passwd: passwd})
-	fmt.Printf("已指定 -a，额外共享当前目录: %s\n", cwd)
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return config.SharedFolder{}, fmt.Errorf("目录不可访问: %v", err)
+	}
+	if !fi.IsDir() {
+		return config.SharedFolder{}, fmt.Errorf("不是目录: %s", abs)
+	}
+	return config.SharedFolder{Path: abs, Name: filepath.Base(abs)}, nil
+}
+
+// mergeShared 把 -d/--dir 目录追加到配置文件的共享列表并去重。
+// 去重同时考虑精确路径与符号链接解析后的真实路径（与运行时 Add 语义一致）；
+// -d 指定的目录做存在性校验，配置文件中的路径不校验（允许临时失效的目录继续占位）。
+func mergeShared(shared []config.SharedFolder, dirs []string) []config.SharedFolder {
+	seen := make(map[string]bool, len(shared)+len(dirs))
+	keep := func(p string) bool {
+		key := p
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			key = r
+		}
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		return true
+	}
+	out := make([]config.SharedFolder, 0, len(shared)+len(dirs))
+	for _, f := range shared {
+		if keep(f.Path) {
+			out = append(out, f)
+		}
+	}
+	for _, p := range dirs {
+		sf, err := sharedFromDir(p)
+		if err != nil {
+			log.Fatalf("共享目录无效: %v", err)
+		}
+		if !keep(sf.Path) {
+			fmt.Printf("已跳过重复共享目录: %s\n", sf.Path)
+			continue
+		}
+		out = append(out, sf)
+	}
+	return out
 }
 
 // applyDefaultPasswd 用默认密码填充未显式设置密码（shared_folders[].passwd 与
 // passwd_hash 均为空）的文件夹，不覆盖配置文件中为单个文件夹指定的独立密码
-// （含其哈希表示，如恢复的上次共享记录）；明文密码由 NewManager 统一转哈希。
+// （含其哈希表示）；明文密码由 NewManager 统一转哈希。
 func applyDefaultPasswd(cfg *config.Config, passwd string) {
 	if passwd == "" {
 		return
@@ -96,12 +97,11 @@ func applyDefaultPasswd(cfg *config.Config, passwd string) {
 	}
 }
 
-// sharedContains 判断共享列表中是否已包含指定路径。
-func sharedContains(shared []config.SharedFolder, path string) bool {
-	for _, f := range shared {
-		if f.Path == path {
-			return true
-		}
-	}
-	return false
+// canonicalSharedFolders 对共享列表按路径排序并返回其规范化快照，
+// 供与当前配置对比（排序使 YAML 输出稳定，避免无意义抖动）。
+func canonicalSharedFolders(shared []config.SharedFolder) []config.SharedFolder {
+	out := make([]config.SharedFolder, len(shared))
+	copy(out, shared)
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
+	"reflect"
 	"syscall"
 	"time"
 
@@ -17,23 +17,23 @@ import (
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
-	"filespace/internal/state"
 )
 
 // app 一次运行的组件集合。
 type app struct {
-	cfg     *config.Config
-	nodeID  string
-	mon     *monitor.Monitor
-	folders *share.Manager
-	peers   *discovery.Cache
-	httpSrv *http.Server
-	cancel  context.CancelFunc
+	cfg        *config.Config
+	configPath string // 当前生效的配置文件路径（供运行中共享变更写回）
+	nodeID     string
+	mon        *monitor.Monitor
+	folders    *share.Manager
+	peers      *discovery.Cache
+	httpSrv    *http.Server
+	cancel     context.CancelFunc
 }
 
 // runServer 启动纯后端 API 服务（无前端），等待退出信号后优雅关闭。
-func runServer(cfg *config.Config) {
-	a := &app{cfg: cfg}
+func runServer(cfg *config.Config, configPath string) {
+	a := &app{cfg: cfg, configPath: configPath}
 	a.build()
 	a.buildHTTPServer(nil) // nil → 纯 API，不托管静态文件
 	a.startHTTP()
@@ -62,6 +62,8 @@ func (a *app) buildHTTPServer(staticFS http.FileSystem) {
 		Folders: a.folders,
 		Monitor: a.mon,
 		Peers:   a.peers,
+		// 共享列表变更（UI 添加/移除/改密）后立即写回配置文件
+		Persist: func() { persistConfig(a.configPath, a.cfg, a.folders) },
 	})
 	var handler http.Handler
 	if staticFS != nil {
@@ -110,7 +112,7 @@ func (a *app) waitAndShutdown() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
 	fmt.Println("\n正在退出...")
-	saveLastShared(a.folders)
+	persistConfig(a.configPath, a.cfg, a.folders) // 退出前把共享列表写回配置文件
 	// 停止目录变更监听（释放 fsnotify 资源），统计缓存的扫描 goroutine 随进程退出自然结束
 	a.folders.Close()
 	// 通知其他节点本节点已退出：它们收到后立即把本节点从在线列表移除，
@@ -124,17 +126,22 @@ func (a *app) waitAndShutdown() {
 	_ = a.httpSrv.Shutdown(shutdownCtx)
 }
 
-// saveLastShared 记录本次共享的目录（含运行中追加/设置的访问密码），
-// 供下次未指定目录时恢复——重启后文件夹的密码不会丢失。
-func saveLastShared(folders *share.Manager) {
-	shared := folders.SharedSnapshot()
-	if err := state.SaveLastShared(shared); err != nil {
-		log.Printf("记录共享目录失败: %v", err)
+// persistConfig 把当前共享列表（含运行中 UI 添加/移除/改密的目录与密码哈希）
+// 写回配置文件，保证重启后仍按最新列表共享。仅在列表相对启动配置有变化时写入。
+func persistConfig(configPath string, cfg *config.Config, folders *share.Manager) {
+	if configPath == "" {
 		return
 	}
-	paths := make([]string, 0, len(shared))
-	for _, f := range shared {
-		paths = append(paths, f.Path)
+	current := canonicalSharedFolders(folders.SharedSnapshot())
+	if reflect.DeepEqual(current, canonicalSharedFolders(cfg.Shared)) {
+		return // 与启动时一致，无需写回
 	}
-	fmt.Printf("已记录本次共享的目录: %s\n", strings.Join(paths, ", "))
+	updated := *cfg
+	updated.Shared = current
+	if err := config.Save(configPath, &updated); err != nil {
+		log.Printf("写回配置文件失败: %v", err)
+		return
+	}
+	cfg.Shared = current
+	fmt.Printf("已把共享目录列表写回配置文件: %s\n", configPath)
 }
