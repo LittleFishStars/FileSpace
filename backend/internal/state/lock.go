@@ -52,7 +52,10 @@ func AcquireRunningLock(port int) (*RunningLock, int, error) {
 		return nil, 0, err
 	}
 	_, err = fmt.Fprintf(f, "%d\n", port)
-	f.Close()
+	// 锁文件内容决定后续进程能否识别「已有后端在运行」，写入与关闭的错误都需上报
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
 	if err != nil {
 		return nil, 0, err
 	}

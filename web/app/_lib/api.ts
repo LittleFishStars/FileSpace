@@ -59,7 +59,7 @@ function authInit(token?: string): RequestInit | undefined {
 }
 
 /** 发起 GET 请求并解析 JSON，非 2xx 抛 ApiError */
-export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
+async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     const res = await fetch(url, init)
     if (!res.ok) {
         throw new ApiError(url, res.status)
@@ -68,7 +68,7 @@ export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> 
 }
 
 /** 发起 JSON POST 请求并解析 JSON，非 2xx 抛 ApiError（错误响应体带 error 字段时一并展示） */
-export async function postJSON<T>(url: string, body?: unknown): Promise<T> {
+async function postJSON<T>(url: string, body?: unknown): Promise<T> {
     const res = await fetch(url, {
         method: 'POST',
         headers: body !== undefined ? {'Content-Type': 'application/json'} : undefined,

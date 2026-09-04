@@ -12,8 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // 前端引导脚本：独立 Node 脚本（CommonJS），不经过 Next 编译与 TS 检查
-    "start.js",
   ]),
 ]);
 

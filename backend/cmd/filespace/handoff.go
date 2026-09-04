@@ -113,14 +113,15 @@ func probeBackend(port int) error {
 	return fmt.Errorf("端口 %d 上有服务响应但非 filespace", port)
 }
 
-// sendAddFolders 把要追加的目录列表发给已运行的后端（password 为该批目录的访问密码，空为开放）。
-func sendAddFolders(port int, paths []string, password string) error {
-	body, err := json.Marshal(map[string]any{"paths": paths, "password": password})
+// postAPI 向已运行的后端 POST 一个 JSON 请求体并校验响应：
+// 状态码 200 返回 nil，否则返回携带状态码与后端 error 消息的 apiError。
+func postAPI(port int, path string, body any) error {
+	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/folders/add", port), "application/json", bytes.NewReader(body))
+	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d%s", port, path), "application/json", bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -130,30 +131,21 @@ func sendAddFolders(port int, paths []string, password string) error {
 			Error string `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&e)
+		if e.Error == "" {
+			e.Error = resp.Status // 错误体非 JSON（如代理返回 HTML）时至少给出状态描述
+		}
 		return &apiError{status: resp.StatusCode, msg: e.Error}
 	}
 	return nil
 }
 
+// sendAddFolders 把要追加的目录列表发给已运行的后端（password 为该批目录的访问密码，空为开放）。
+func sendAddFolders(port int, paths []string, password string) error {
+	return postAPI(port, "/api/folders/add", map[string]any{"paths": paths, "password": password})
+}
+
 // sendSetFolderPassword 请求已运行的后端修改/移除某目录的访问密码
 // （password 为空表示移除）。目录未共享时后端返回 404。
 func sendSetFolderPassword(port int, path, password string) error {
-	body, err := json.Marshal(map[string]any{"path": path, "password": password})
-	if err != nil {
-		return err
-	}
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/folders/password", port), "application/json", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		var e struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&e)
-		return &apiError{status: resp.StatusCode, msg: e.Error}
-	}
-	return nil
+	return postAPI(port, "/api/folders/password", map[string]any{"path": path, "password": password})
 }

@@ -242,7 +242,7 @@ func (m *Manager) ensureWatcher() *dirWatcher {
 	if m.watcher != nil {
 		return m.watcher
 	}
-	w, err := newDirWatcher(m.debounce, m.scanAsync)
+	w, err := newDirWatcher(watchDebounce, m.scanAsync)
 	if err != nil {
 		log.Printf("文件变更监听不可用（%v）：统计缓存将不会随文件变化自动刷新", err)
 		return nil

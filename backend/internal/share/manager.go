@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"filespace/internal/auth"
 	"filespace/internal/config"
@@ -24,8 +23,6 @@ type Manager struct {
 	watcher   *dirWatcher
 	watchStop func()
 	closed    bool // Close 后不再重启监听
-	// debounce 目录变更事件的防抖窗口（测试可调小；生产默认 watchDebounce）。
-	debounce time.Duration
 }
 
 // NewManager 根据配置创建共享目录管理器，为每个目录生成稳定 ID。
@@ -44,7 +41,7 @@ func NewManager(shared []config.SharedFolder) *Manager {
 			RealPath:   RealPath(sf.Path),
 		})
 	}
-	m := &Manager{folders: folders, stats: make(map[string]*folderStats, len(folders)), debounce: watchDebounce}
+	m := &Manager{folders: folders, stats: make(map[string]*folderStats, len(folders))}
 	// 预创建统计条目：WarmUp / List 触发 scanAsync 时能找到目标，立即开始后台扫描
 	for _, f := range folders {
 		m.stats[f.ID] = &folderStats{}

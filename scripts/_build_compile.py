@@ -204,18 +204,3 @@ def build_platforms(targets):
         exe = os.path.join(BUILD_DIR, p.name, binary_name(p))
         print("   %s            # 只启动后端 API" % exe)
         print("   %s --web      # 启动后端 + 前端界面，并在浏览器中打开" % exe)
-
-
-def ensure_build(platform):
-    """确保某平台构建产物存在（存在则复用，缺失则先构建）。"""
-    platform_dir = os.path.join(BUILD_DIR, platform.name)
-    binary = os.path.join(platform_dir, binary_name(platform))
-    if os.path.isfile(binary):
-        print("   复用已有构建产物：build/%s/" % platform.name)
-        return
-    print("   构建产物缺失，先构建 %s ..." % platform.name)
-    if not os.path.isdir(WEB_EXPORT):
-        build_web()
-    if not os.path.isdir(EMBED_DIR):
-        prepare_embed_dir()
-    build_backend(platform)

@@ -6,7 +6,7 @@ import type {ApiFolderInfo, ApiNodeInfo, ApiPeerInfo} from './api';
 import type {HostInfo} from '../_cards/host_card';
 
 /** 把后端 NodeInfo + folders 转换为前端 HostInfo */
-export function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
+function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
     return {
         id: node.id,
         hostname: node.hostname,

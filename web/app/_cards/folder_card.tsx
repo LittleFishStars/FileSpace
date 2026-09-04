@@ -1,10 +1,9 @@
 'use client'
 
-import React from 'react'
 import { FolderOutlined, LockOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
 import { Tooltip } from 'antd'
-import { formatSize } from '../_lib/format'
+import { formatSize, formatTime } from '../_lib/format'
 
 /**
  * 文件夹卡片。
@@ -61,7 +60,7 @@ export default function FolderCard({
           </div>
           {folder.updatedAt && (
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              {folder.updatedAt} 更新
+              {formatTime(folder.updatedAt)} 更新
             </div>
           )}
         </div>

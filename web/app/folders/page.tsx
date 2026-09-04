@@ -457,7 +457,7 @@ function FolderBrowser() {
                     autoFocus
                 />
                 {authError && (
-                    <Alert type="error" showIcon className="mt-3" message={authError}/>
+                    <Alert type="error" showIcon className="mt-3" title={authError}/>
                 )}
             </Modal>
         </AppShell>
