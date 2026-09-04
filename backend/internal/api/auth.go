@@ -37,6 +37,19 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"token": token})
 }
 
+// authorizedFolderID 从路径参数取出共享文件夹 id 并完成访问鉴权：
+// 通过时返回 id 与 true；未通过（需密码但无有效令牌）时已写出 401 响应，
+// 返回 false，调用方应直接结束处理。供 tree/download 等远程内容端点复用，
+// 避免各处理函数重复「取 id + 鉴权 + 写 401」三行样板。
+func (s *Server) authorizedFolderID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id := r.PathValue("id")
+	if !s.authorized(r, id) {
+		writeError(w, http.StatusUnauthorized, "需要访问密码（未认证或令牌已过期）")
+		return "", false
+	}
+	return id, true
+}
+
 // authorized 判断请求是否有权访问指定共享文件夹的内容：
 // 回环请求（本机）放行；文件夹不存在或未设置密码时放行（不存在的由业务逻辑返回 404）；
 // 设置了密码时校验访问令牌，且令牌须绑定该文件夹的密码哈希（同密码的文件夹可共用令牌）。

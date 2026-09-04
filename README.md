@@ -46,6 +46,7 @@
 │   │   ├── api/          # HTTP API 路由与处理（server 路由装配 / static 托管 / respond 响应助手）
 │   │   ├── auth/         # 访问密码哈希与令牌签发校验（share 与 api 共同依赖的单一契约）
 │   │   ├── config/       # 配置结构体与加载（默认配置文件创建/写回）
+│   │   ├── desktop/      # 系统默认应用打开文件/URL（api 打开共享文件与 --web 打开浏览器共用）
 │   │   ├── discovery/    # mDNS 服务注册与发现
 │   │   ├── model/        # 数据模型（与前端对齐）
 │   │   ├── monitor/      # 系统状态采集（主机名 / 系统 / 运行时间 / IP，跨平台）

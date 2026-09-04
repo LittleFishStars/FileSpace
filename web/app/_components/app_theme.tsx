@@ -3,6 +3,7 @@
 import React, {createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {App as AntdApp, ConfigProvider, theme as antdTheme} from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import {storageGet, storageSet} from '../_lib/storage';
 
 /**
  * 主题模式：
@@ -39,8 +40,7 @@ function getServerSnapshot(): boolean {
 }
 
 function readStoredMode(): ThemeMode {
-    if (typeof window === 'undefined') return 'system';
-    const value = window.localStorage.getItem(STORAGE_KEY);
+    const value = storageGet(STORAGE_KEY);
     return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
 }
 
@@ -127,11 +127,7 @@ export default function AppTheme({children}: { children: React.ReactNode }) {
 
     const setMode = useCallback((m: ThemeMode) => {
         setModeState(m);
-        try {
-            window.localStorage.setItem(STORAGE_KEY, m);
-        } catch {
-            // localStorage 不可用时忽略（不影响本次会话内生效）
-        }
+        storageSet(STORAGE_KEY, m); // 存储不可用时忽略（不影响本次会话内生效）
     }, []);
 
     // 在 <html> 上开关 .dark，让 Tailwind dark: 变体与页面背景跟随当前主题

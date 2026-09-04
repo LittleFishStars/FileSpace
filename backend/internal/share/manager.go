@@ -114,16 +114,17 @@ func (m *Manager) Remove(id string) error {
 	return nil
 }
 
-// Resolve 按 ID 查找共享目录。
-func (m *Manager) Resolve(id string) (*Folder, bool) {
+// Resolve 按 ID 查找共享目录，返回其拷贝（避免调用方持内部切片元素指针，
+// 与 Remove/Add 的写锁外并发造成悬垂引用）。
+func (m *Manager) Resolve(id string) (Folder, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for i := range m.folders {
 		if m.folders[i].ID == id {
-			return &m.folders[i], true
+			return m.folders[i], true
 		}
 	}
-	return nil, false
+	return Folder{}, false
 }
 
 // SharedSnapshot 返回当前共享目录列表（含密码哈希），供写回配置文件使用，

@@ -5,7 +5,7 @@
 import type {ApiFolderInfo, ApiNodeInfo, ApiPeerInfo} from './api';
 import type {HostInfo} from '../_cards/host_card';
 
-/** 把后端 NodeInfo + folders 转换为前端 HostInfo */
+/** 把后端 NodeInfo + folders 转换为前端 HostInfo（folders 直接透传后端模型） */
 function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
     return {
         id: node.id,
@@ -16,14 +16,7 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
         uptime: node.uptime,
         softwareVersion: node.softwareVersion,
         auth: node.auth,
-        folders: folders.map((f) => ({
-            id: f.id,
-            name: f.name,
-            fileCount: f.fileCount,
-            totalSize: f.totalSize,
-            updatedAt: f.updatedAt,
-            auth: f.auth,
-        })),
+        folders,
     };
 }
 

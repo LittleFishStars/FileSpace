@@ -5,6 +5,7 @@ import {Alert, Modal, Spin} from 'antd';
 import {detectFileType} from '@smazeeapps/file-viewer';
 import type {FileViewerProps} from '@smazeeapps/file-viewer';
 import {useTheme} from './app_theme';
+import {errMsg} from '../_lib/errors';
 
 /**
  * 关键修复：阻止 prismjs 的自动 highlightAll 破坏 FileViewer 已渲染的逐行代码结构。
@@ -155,7 +156,7 @@ function TextViewer({fileUrl}: {fileUrl: string}) {
                 const text = await res.text();
                 if (!cancelled) setContent(text);
             } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
+                if (!cancelled) setError(errMsg(e, '加载失败'));
             }
         })();
         return () => {

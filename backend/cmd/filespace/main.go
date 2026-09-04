@@ -43,9 +43,6 @@ func main() {
 
 	resolveSharedFolders(cfg, opts.dirs)
 
-	if opts.web {
-		runServerWithWeb(cfg, configPath)
-	} else {
-		runServer(cfg, configPath)
-	}
+	// 以是否托管前端界面（--web）为唯一差异启动后端服务
+	runServer(cfg, configPath, opts.web)
 }

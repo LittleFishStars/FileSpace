@@ -70,28 +70,9 @@ func (l *RunningLock) Release() error {
 	return os.Remove(l.path)
 }
 
-// BackendAlive 探测端口上是否运行着活的 filespace 后端。
+// BackendAlive 探测端口上是否运行着活的 filespace 后端：
+// GET /api/node 成功且返回节点 ID 即认为存活（与 cmd 层移交探测同口径）。
 func BackendAlive(port int) bool {
-	return backendAlive(port)
-}
-
-// readLockPort 读取锁文件中的端口；容忍创建后写入的短暂窗口（重试），读不到返回 0。
-func readLockPort(path string) int {
-	for i := 0; i < 10; i++ {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			var p int
-			if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &p); err == nil && p > 0 {
-				return p
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return 0
-}
-
-// backendAlive 探测端口上是否运行着活的 filespace 后端。
-func backendAlive(port int) bool {
 	client := &http.Client{Timeout: 800 * time.Millisecond}
 	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/node", port))
 	if err != nil {
@@ -108,4 +89,19 @@ func backendAlive(port int) bool {
 		return false
 	}
 	return true
+}
+
+// readLockPort 读取锁文件中的端口；容忍创建后写入的短暂窗口（重试），读不到返回 0。
+func readLockPort(path string) int {
+	for i := 0; i < 10; i++ {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			var p int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &p); err == nil && p > 0 {
+				return p
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return 0
 }

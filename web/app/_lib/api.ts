@@ -58,34 +58,36 @@ function authInit(token?: string): RequestInit | undefined {
     return token ? {headers: {Authorization: `Bearer ${token}`}} : undefined
 }
 
-/** 发起 GET 请求并解析 JSON，非 2xx 抛 ApiError */
-async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(url, init)
-    if (!res.ok) {
-        throw new ApiError(url, res.status)
+/** 解析响应体的 error 字段（非 JSON 错误体时返回空串） */
+async function readErrorDetail(res: Response): Promise<string> {
+    try {
+        const data = (await res.json()) as {error?: string}
+        return data.error ?? ''
+    } catch {
+        return '' // 非 JSON 错误体（如代理返回的 HTML），忽略
     }
-    return res.json() as Promise<T>
 }
 
-/** 发起 JSON POST 请求并解析 JSON，非 2xx 抛 ApiError（错误响应体带 error 字段时一并展示） */
-async function postJSON<T>(url: string, body?: unknown): Promise<T> {
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: body !== undefined ? {'Content-Type': 'application/json'} : undefined,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
+/** 统一请求：发起 fetch 并解析 JSON，非 2xx 抛 ApiError（带后端 error 消息） */
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(url, init)
     if (!res.ok) {
-        let detail = ''
-        try {
-            const data = (await res.json()) as {error?: string}
-            detail = data.error ?? ''
-        } catch {
-            // 非 JSON 错误体，忽略
-        }
+        const detail = await readErrorDetail(res)
         throw new ApiError(url, res.status, detail)
     }
     return res.json() as Promise<T>
 }
+
+/** 发起 GET 请求并解析 JSON，非 2xx 抛 ApiError */
+const fetchJSON = <T>(url: string, init?: RequestInit) => request<T>(url, init)
+
+/** 发起 JSON POST 请求并解析 JSON，非 2xx 抛 ApiError（无 body 时不发送 Content-Type） */
+const postJSON = <T>(url: string, body?: unknown) =>
+    request<T>(url, {
+        method: 'POST',
+        headers: body !== undefined ? {'Content-Type': 'application/json'} : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
 
 export const fetchNode = () => fetchJSON<ApiNodeInfo>('/api/node')
 

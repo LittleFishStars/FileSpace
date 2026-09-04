@@ -15,6 +15,7 @@ import {
     type ApiPeerInfo,
 } from './api';
 import {PEER_REFRESH_INTERVAL} from './constants';
+import {errMsg} from './errors';
 
 export interface NodesData {
     /** 本机节点信息（AccessProvider 提供），未就绪时为 null */
@@ -47,7 +48,7 @@ export function useNodesData(): NodesData {
                 setPeers(ps);
                 setError(null);
             } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : '无法连接后端服务');
+                if (!cancelled) setError(errMsg(e, '无法连接后端服务'));
             }
         }
         // 定时刷新节点列表：节点上线/退出（含收到退出通知）后即时更新；
