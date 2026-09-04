@@ -44,6 +44,7 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 - **勿移除** `package.json` 的 `postinstall`（修补 ProLayout 内部 Drawer 废弃 width 警告）
 - 主题：`AppTheme` 在 `<html>` 上开关 `.dark` class，Tailwind `dark:` 变体为 class 驱动（`@custom-variant dark`）
 - **主题切换样式清理（`pruneDuplicateStyles`）勿删含 `@keyframes/@font-face/@property` 的样式节点**：cssinjs 把弹窗等组件的动画 keyframes 与同名 token 的组件样式注入在同一个 `prependQueue` 节点里，按选择器签名分组删旧节点会让动画名引用悬空 → Modal 卡在 `ant-zoom-enter`（opacity:0）不可见、但 mask 铺满全屏拦截点击（表现为"切主题后弹窗没反应 / 页面点不动"）。修复：签名解析整体跳过 at-rule 定义块 + 含定义块的节点直接豁免
+- **`selectorSignature` 解析样式节点时，无论普通规则还是 @ 规则都要用大括号配平跳过整个 `{…}` 声明块**：若只前进一个字符（`i = open + 1`），下一轮会从声明内容中间找下一个 `{`，把「声明值 + 后续选择器」混入签名 → 亮/暗主题节点的签名必然不同 → 同组节点永不清理 → 卡片背景不跟随的 bug 回归（2026-09 修弹窗问题改手写解析器时曾引入此缺陷）
 - 提交前 `tsc --noEmit` + `eslint` + `next build`
 
 ## 文档与提交

@@ -74,12 +74,13 @@ function selectorSignature(text: string): string {
         const open = text.indexOf('{', i);
         if (open === -1) break;
         const sel = text.slice(i, open).trim();
-        if (AT_SKIP.test(sel)) {
-            i = skipAtBlock(text, open);
-            continue;
-        }
-        if (sel && !sel.startsWith('@')) sels.add(sel);
-        i = open + 1;
+        // 无论普通规则还是 @ 规则，都按大括号配平跳过整个「{…}」块：
+        // 否则下一轮会从声明内容中间找下一个 '{'，把「声明值 + 后续选择器」
+        // 一起当选择器提取，使签名带上主题相关颜色值 → 亮暗签名必然不同 →
+        // 旧主题节点永不清理，卡片背景不跟随的 bug 回归。
+        i = skipAtBlock(text, open);
+        if (!sel || sel.startsWith('@')) continue;
+        sels.add(sel);
     }
     return [...sels].sort().join('|');
 }
