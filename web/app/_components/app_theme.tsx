@@ -45,17 +45,41 @@ function readStoredMode(): ThemeMode {
 }
 
 /**
- * 提取样式文本的「选择器签名」：所有规则选择器（跳过 @ 规则）去重排序后拼接。
+ * 提取样式文本的「选择器签名」：所有规则选择器去重排序后拼接。
  * 同一组件在亮/暗主题下的样式节点选择器相同、仅属性值不同 → 签名相同。
+ *
+ * @keyframes / @font-face / @property 块整体跳过（内部的 from/to/百分比不是元素选择器，
+ * 计入会污染签名）；这类定义块的名字按主题 token 生成、新旧主题互不引用，
+ * 含它们的节点由 pruneDuplicateStyles 直接豁免，不参与分组删除。
  */
+const AT_SKIP = /@(keyframes|font-face|property|counter-style)[\s{]/;
+
+function skipAtBlock(text: string, open: number): number {
+    // 从 open（'{' 下标）起按大括号配平跳过整个块，返回块结束后的下标
+    let depth = 1;
+    let i = open + 1;
+    while (i < text.length && depth > 0) {
+        const ch = text[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+        i++;
+    }
+    return i;
+}
+
 function selectorSignature(text: string): string {
     const sels = new Set<string>();
-    const re = /([^{}]+)\{/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-        const sel = m[1].trim();
-        if (!sel || sel.startsWith('@')) continue;
-        sels.add(sel);
+    let i = 0;
+    while (i < text.length) {
+        const open = text.indexOf('{', i);
+        if (open === -1) break;
+        const sel = text.slice(i, open).trim();
+        if (AT_SKIP.test(sel)) {
+            i = skipAtBlock(text, open);
+            continue;
+        }
+        if (sel && !sel.startsWith('@')) sels.add(sel);
+        i = open + 1;
     }
     return [...sels].sort().join('|');
 }
@@ -69,15 +93,17 @@ function selectorSignature(text: string): string {
  * 导致后插入的节点永远覆盖先插入的节点（如亮色卡片样式持续覆盖暗色）。
  *
  * 这里在主题切换后按「选择器签名」分组，每组保留最后一个（当前主题）节点，
- * 删除前面的旧主题重复节点。CSS 变量节点（含 --ant-）与纯 @keyframes 节点被排除。
+ * 删除前面的旧主题重复节点。CSS 变量节点（含 --ant-）与含 @keyframes 等定义块的
+ * 节点被排除——后者删掉会让弹窗等组件的动画引用悬空：animationend 永不触发，
+ * rc-motion 卡在 enter 状态（opacity: 0），弹窗透明且遮罩层拦截整页点击。
  */
 function pruneDuplicateStyles() {
     const nodes = Array.from(document.querySelectorAll<HTMLStyleElement>('style[data-rc-order="prependQueue"]'));
     const groups = new Map<string, HTMLStyleElement[]>();
     for (const node of nodes) {
         const text = node.textContent ?? '';
-        // 跳过 CSS 变量节点（自定义属性 --ant-*）与无选择器节点（keyframes 等）
-        if (text.includes('--ant-')) continue;
+        // 跳过 CSS 变量节点（自定义属性 --ant-*）与含动画/字体等定义块的节点（被引用方删除会悬挂）
+        if (text.includes('--ant-') || AT_SKIP.test(text)) continue;
         const sig = selectorSignature(text);
         if (!sig) continue;
         const list = groups.get(sig);

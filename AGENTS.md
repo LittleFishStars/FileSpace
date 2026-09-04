@@ -43,13 +43,14 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 - **勿移除** `file_preview.tsx` 顶部的 `window.Prism = {manual: true}`（阻止 prism 自动 highlightAll 破坏代码逐行结构）
 - **勿移除** `package.json` 的 `postinstall`（修补 ProLayout 内部 Drawer 废弃 width 警告）
 - 主题：`AppTheme` 在 `<html>` 上开关 `.dark` class，Tailwind `dark:` 变体为 class 驱动（`@custom-variant dark`）
+- **主题切换样式清理（`pruneDuplicateStyles`）勿删含 `@keyframes/@font-face/@property` 的样式节点**：cssinjs 把弹窗等组件的动画 keyframes 与同名 token 的组件样式注入在同一个 `prependQueue` 节点里，按选择器签名分组删旧节点会让动画名引用悬空 → Modal 卡在 `ant-zoom-enter`（opacity:0）不可见、但 mask 铺满全屏拦截点击（表现为"切主题后弹窗没反应 / 页面点不动"）。修复：签名解析整体跳过 at-rule 定义块 + 含定义块的节点直接豁免
 - 提交前 `tsc --noEmit` + `eslint` + `next build`
 
 ## 文档与提交
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.3.6-2609042024`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.3.6` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
+- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.3.6-2609042103`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.3.6` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->
