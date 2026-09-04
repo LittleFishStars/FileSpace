@@ -51,8 +51,29 @@ func hashPassword(password string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// HashPassword 导出密码哈希计算：供启动解析共享配置时（cmd/filespace）将
+// 明文默认密码直接转为哈希填入，保证明文只出现在输入入口。
+func HashPassword(password string) string {
+	return hashPassword(password)
+}
+
+// ApplyDefaultPasswdHash 用默认密码填充未显式设置密码（passwd 与 passwd_hash 均为空）
+// 的共享目录：直接写入密码哈希（与持久化表示一致），
+// 不覆盖配置文件中为单个文件夹指定的独立密码（含其哈希表示）。
+func ApplyDefaultPasswdHash(shared []config.SharedFolder, passwd string) {
+	if passwd == "" {
+		return
+	}
+	hash := hashPassword(passwd)
+	for i := range shared {
+		if shared[i].Passwd == "" && shared[i].PasswdHash == "" {
+			shared[i].PasswdHash = hash
+		}
+	}
+}
+
 // folderPassHash 取共享配置的密码哈希：PasswdHash 优先（持久化/内部表示），
-// 否则对明文 Passwd（配置文件 / 命令行输入）现场哈希，不回存明文。
+// 否则对明文 Passwd（配置文件中的历史输入）现场哈希，不回存明文。
 func folderPassHash(sf config.SharedFolder) string {
 	if sf.PasswdHash != "" {
 		return sf.PasswdHash

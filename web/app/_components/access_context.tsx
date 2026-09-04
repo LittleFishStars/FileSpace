@@ -54,7 +54,7 @@ export function AccessProvider({children}: {children: React.ReactNode}) {
     const value: AccessScope = {
         node,
         status,
-        isLocalAccess: node === null ? null : node.local !== false,
+        isLocalAccess: node === null ? null : node.local,
     };
 
     return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;

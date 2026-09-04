@@ -1,3 +1,4 @@
+// Package state 负责本地运行锁的读写（锁文件存放于用户配置目录，标识已有后端在运行）。
 package state
 
 import (
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"filespace/internal/config"
 )
 
 // ErrBackendRunning 标记已有 filespace 后端在运行（锁文件存在且端口存活）。
@@ -27,7 +30,7 @@ type RunningLock struct {
 //   - 锁文件存在但端口无响应（崩溃残留）→ 删除残留锁文件后重建
 //   - 无锁文件 → 创建并写入本进程端口（退出时调用 Release 删除）
 func AcquireRunningLock(port int) (*RunningLock, int, error) {
-	dir, err := dir()
+	dir, err := config.ConfigDir()
 	if err != nil {
 		return nil, 0, err
 	}

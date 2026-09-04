@@ -9,17 +9,17 @@ import (
 	"strings"
 
 	"filespace/internal/config"
+	"filespace/internal/share"
 )
 
 // resolveSharedFolders 解析最终共享目录列表：
-// 配置文件 shared_folders 为基，-d/--dir 指定的目录追加到其后（重复路径自动去重）。
-// 无共享目录时不共享任何文件夹（也不恢复上次共享 / 共享当前目录）。
+// 配置文件 shared_folders 为基，-d/--dir 指定的目录追加到其后（重复路径自动去重）；
 // 最后用默认密码（cfg.Passwd，已合并 -P/--passwd 覆盖）填充未显式设置密码的文件夹。
 func resolveSharedFolders(cfg *config.Config, dirs []string) {
 	if len(dirs) > 0 {
 		cfg.Shared = mergeShared(cfg.Shared, dirs)
 	}
-	applyDefaultPasswd(cfg, cfg.Passwd)
+	share.ApplyDefaultPasswdHash(cfg.Shared, cfg.Passwd)
 	if len(cfg.Shared) > 0 {
 		paths := make([]string, 0, len(cfg.Shared))
 		for _, f := range cfg.Shared {
@@ -81,20 +81,6 @@ func mergeShared(shared []config.SharedFolder, dirs []string) []config.SharedFol
 		out = append(out, sf)
 	}
 	return out
-}
-
-// applyDefaultPasswd 用默认密码填充未显式设置密码（shared_folders[].passwd 与
-// passwd_hash 均为空）的文件夹，不覆盖配置文件中为单个文件夹指定的独立密码
-// （含其哈希表示）；明文密码由 NewManager 统一转哈希。
-func applyDefaultPasswd(cfg *config.Config, passwd string) {
-	if passwd == "" {
-		return
-	}
-	for i := range cfg.Shared {
-		if cfg.Shared[i].Passwd == "" && cfg.Shared[i].PasswdHash == "" {
-			cfg.Shared[i].Passwd = passwd
-		}
-	}
 }
 
 // canonicalSharedFolders 对共享列表按路径排序并返回其规范化快照，

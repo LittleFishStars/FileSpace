@@ -28,7 +28,7 @@ import {useSearchParams} from 'next/navigation';
 import AppShell from '../_components/app_shell';
 import {useAccess} from '../_components/access_context';
 import FilePreview from '../_components/file_preview';
-import {formatSize} from '../_cards/folder_card';
+import {formatSize, formatTime} from '../_lib/format';
 import {
   ApiError,
   authLogin,
@@ -50,13 +50,6 @@ import {
  * 本机文件夹（本机管理页进入）：文件无需下载/预览，操作为「打开」
  * （调用本机后端用系统默认应用打开）；远程文件夹：下载 + 预览。
  */
-
-/** 把 RFC3339 时间显示为本地可读格式 */
-function formatTime(iso: string): string {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString('zh-CN', {hour12: false});
-}
 
 /** 访问令牌在 localStorage 的存储键（按节点 API 基地址 + 文件夹区分；不同文件夹密码可能不同） */
 function tokenKey(base: string, folderId: string): string {
@@ -120,7 +113,7 @@ function FolderBrowser() {
                 // 仅本机访问（node.local）时，本机共享文件夹才按「本机文件夹」处理：
                 // 远程访问时本机文件夹同样按远程文件夹展示（下载/预览，
                 // 「打开」操作调用本机系统默认应用，仅限本机回环）。
-                let local = n.local !== false;
+                let local = n.local;
                 // 该文件夹是否设置了访问密码（按文件夹判断：同一节点不同文件夹密码可能不同）
                 let folderAuth = false;
                 if (!found) {
@@ -131,7 +124,7 @@ function FolderBrowser() {
                             host = peer.node.hostname;
                             base = peer.node.listenAddr ? `http://${peer.node.listenAddr}` : '';
                             local = false;
-                            folderAuth = f.auth === true;
+                            folderAuth = f.auth;
                             break;
                         }
                     }

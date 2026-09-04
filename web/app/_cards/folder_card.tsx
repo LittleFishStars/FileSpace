@@ -4,11 +4,11 @@ import React from 'react'
 import { FolderOutlined, LockOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
 import { Tooltip } from 'antd'
+import { formatSize } from '../_lib/format'
 
 /**
  * 文件夹卡片。
  * 展示共享文件夹的核心信息：文件夹名、文件数与总大小。
- * 布局参考手绘稿：名称 + 顶部图标，下方为统计信息行。
  */
 export interface FolderInfo {
   id: string
@@ -21,19 +21,6 @@ export interface FolderInfo {
   updatedAt?: string
   /** 该文件夹是否设置了访问密码（远程访问需先认证） */
   auth?: boolean
-}
-
-/** 将字节数格式化为可读大小 */
-export function formatSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-  let i = 0
-  let v = bytes
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`
 }
 
 export default function FolderCard({

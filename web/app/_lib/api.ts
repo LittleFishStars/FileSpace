@@ -10,9 +10,9 @@ export interface ApiNodeInfo {
     uptime: string
     listenAddr: string
     /** 该节点是否设置了共享访问密码（远程访问需先认证） */
-    auth?: boolean
+    auth: boolean
     /** 当前请求是否来自本机（回环访问）：远程访问时本机节点按局域网节点展示 */
-    local?: boolean
+    local: boolean
 }
 
 export interface ApiFolderInfo {
@@ -23,7 +23,7 @@ export interface ApiFolderInfo {
     totalSize: number
     updatedAt: string
     /** 该文件夹是否设置了访问密码（远程访问需先认证） */
-    auth?: boolean
+    auth: boolean
 }
 
 export interface ApiFileInfo {

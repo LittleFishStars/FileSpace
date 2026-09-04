@@ -30,7 +30,7 @@ import {useRouter} from 'next/navigation';
 import {ProCard} from '@ant-design/pro-components';
 import NodeInfoCard from '../_cards/node_info_card';
 import {useAccess} from './access_context';
-import {formatSize} from '../_cards/folder_card';
+import {formatSize, formatTime} from '../_lib/format';
 import {
     addFolders,
     fetchFolders,
@@ -47,13 +47,6 @@ import {
  * 添加共享默认调用后端在本机弹出系统原生目录选择对话框（浏览器不暴露所选文件夹绝对路径，
  * 故由后端弹对话框）；系统选择器不可用时降级为手动输入绝对路径。
  */
-
-/** 把 RFC3339 时间显示为本地可读格式 */
-function formatTime(iso: string): string {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString('zh-CN', {hour12: false});
-}
 
 export default function LocalPanel() {
     const {message} = AntdApp.useApp();
@@ -439,7 +432,7 @@ export default function LocalPanel() {
                             columns={columns}
                             dataSource={folders}
                             pagination={false}
-                            // 点击整行打开该文件夹的浏览页（不再需要「操作」列里的浏览按钮）
+                            // 点击整行打开该文件夹的浏览页
                             onRow={(record) => ({
                                 className: 'group cursor-pointer',
                                 onClick: () => router.push(`/folders?folderId=${record.id}`),

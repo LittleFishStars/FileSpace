@@ -1,4 +1,4 @@
-// filespace 命令行入口：在某个文件夹下执行即可共享该文件夹。
+// filespace 命令行入口：启动局域网文件共享后端（默认读取用户配置文件）。
 package main
 
 import (
@@ -11,11 +11,11 @@ import (
 // main 解析参数、加载配置、获取运行锁（保持唯一后端）并启动服务。
 func main() {
 	opts, args := parseFlags()
-	if opts.showHelp || (len(args) > 0 && args[0] == "help") {
+	if opts.showHelp {
 		usage()
 		return
 	}
-	// 位置参数已废弃：共享目录一律通过 -d/--dir 或配置文件 shared_folders 指定
+	// 共享目录只能通过 -d/--dir 或配置文件 shared_folders 指定，不接受位置参数
 	if len(args) > 0 {
 		log.Fatalf("不支持位置参数，请改用 -d/--dir 指定要共享的文件夹: %v", args)
 	}

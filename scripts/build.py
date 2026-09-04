@@ -45,16 +45,6 @@ def clean():
         if os.path.isdir(d):
             shutil.rmtree(d)
             print("   已删除 %s" % d)
-    # 旧版布局（build/backend/<平台>/）清理
-    backend_dir = os.path.join(BUILD_DIR, "backend")
-    if os.path.isdir(backend_dir):
-        shutil.rmtree(backend_dir)
-        print("   已删除 %s" % backend_dir)
-    # 旧版布局（build/web/，前后端分离时代的 standalone 前端）清理
-    web_dir = os.path.join(BUILD_DIR, "web")
-    if os.path.isdir(web_dir):
-        shutil.rmtree(web_dir)
-        print("   已删除 %s" % web_dir)
     if os.path.isdir(WEB_EXPORT):
         shutil.rmtree(WEB_EXPORT)
         print("   已删除 %s" % WEB_EXPORT)

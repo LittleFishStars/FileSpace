@@ -17,7 +17,7 @@ import NodeInfoCard from './node_info_card'
  * 节点卡片。
  * 展示某个节点（主机）的基本信息：主机名、IP、操作系统、软件版本、运行时间，
  * 以及该节点共享的文件夹；共享文件夹以文件夹卡片的形式纵向堆叠展示。
- * 布局参考手绘稿：节点信息在上，文件夹卡片在下。
+ * 布局：节点信息在上，文件夹卡片在下。
  */
 export interface HostInfo {
   id: string

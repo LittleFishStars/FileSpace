@@ -20,11 +20,7 @@ make build                  # 全部平台构建（等价 python3 scripts/build.
 make build-linux / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
 python3 scripts/build.py windows darwin   # 脚本直接调用，可多平台
 python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
-make pack                   # 打包安装包（等价 python3 scripts/build.py pack）
-make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pacman/AppImage）
 ```
-
-打包依赖系统工具：wixl（msitools，Windows .msi）、dpkg-deb（dpkg）、makepkg（base-devel）、mksquashfs（squashfs-tools，AppImage 手动构建 + type2 runtime 自动缓存）、可选 rsvg-convert（librsvg）；脚本缺失时提示安装命令。安装包输出到 `build/packages/<平台>/`。
 
 ## 后端约定
 
@@ -50,7 +46,7 @@ make pack-windows / pack-linux            # 指定平台安装包（msi、deb/pa
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.3.6-2609041602`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.3.6` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
+- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.3.6-2609041934`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.3.6` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

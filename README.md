@@ -34,7 +34,7 @@
 ├── scripts/              # 构建脚本
 │   ├── build.py          # 前端静态导出 + go:embed + 按平台编译后端
 │   ├── dev.py            # 开发启动：前端 + 后端
-│   └── assets/           # 安装包图标源（scripts/assets/filespace.svg）
+│   └── assets/           # Windows exe 图标源（scripts/assets/filespace.svg → .ico）
 ├── web/                  # 前端（Next.js + antd + Tailwind v4）
 │   ├── app/              # 页面（_cards/ 卡片组件、_components/ 布局外壳与主题、_lib/ API 封装）
 │   ├── public/           # 静态资源（图标等）
@@ -51,7 +51,7 @@
 │   │   ├── share/        # 共享目录扫描 / 索引
 │   │   └── state/        # 本地状态（运行锁）
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.3.6-2609041602）
+│   └── version.go        # 版本号（当前 0.3.6-2609041934）
 └── build/                # 构建产物（gitignored）：build/<平台>/（后端，含嵌入的前端静态资源）
 ```
 
@@ -134,7 +134,7 @@ python3 scripts/build.py --clean      # 清理构建产物
 | macOS | `~/Library/Application Support/filespace/config.yaml` |
 | Windows | `%AppData%\filespace\config.yaml` |
 
-文件不存在则自动创建带注释的模板（含 `shared_folders: []`，不共享任何文件夹）。可用 `-c, --config <文件>` 指定其它配置文件。仓库内 `backend/config.yaml` 为配置示例（监听端口、共享目录列表、mDNS 服务名、状态采集间隔等）。
+文件不存在则自动创建带注释的模板（含 `shared_folders: []`，不共享任何文件夹）。可用 `-c, --config <文件>` 指定其它配置文件。仓库内 `backend/config.yaml` 为配置示例（监听端口、共享目录列表、默认访问密码、mDNS 服务名等）。
 
 **共享目录持久化**：启动时按配置文件的 `shared_folders` 共享；`-d/--dir` 指定的目录临时追加到本次运行（不写入文件）。**本机管理页**（`/local`）添加/移除共享、设置/修改/移除访问密码时，会立即把当前共享列表写回当前生效的配置文件（`shared_folders` 只存密码的 sha256 哈希，不存明文），保证重启后列表与密码不丢失。`-c` 显式指定的配置文件同样会被写回。
 
@@ -170,9 +170,6 @@ filespace — 文件空间后端（局域网文件共享 API + 前端托管）
                              （传空值 -P '' 表示移除密码）；目录未共享时按「新增共享并设密码」处理
                            也可在 web 端添加/管理共享时按文件夹单独设置密码
   -h, --help              显示本帮助信息
-
-命令:
-  help                    显示本帮助信息
 
 示例:
   filespace                        读取/创建默认配置文件并按配置共享（无共享目录则不共享）

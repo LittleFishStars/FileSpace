@@ -38,8 +38,7 @@ func parseFlags() (*options, []string) {
 	flag.IntVar(&opts.port, "p", 0, "监听端口（-p, --port 简写）")
 	flag.StringVar(&opts.passwd, "passwd", "", "共享访问密码")
 	flag.StringVar(&opts.passwd, "P", "", "共享访问密码（-P, --passwd 简写）")
-	flag.BoolVar(&opts.showHelp, "help", false, "显示帮助信息")
-	flag.BoolVar(&opts.showHelp, "h", false, "显示帮助信息（-h, --help 简写）")
+	flag.BoolVar(&opts.showHelp, "h", false, "显示帮助信息")
 	flag.BoolVar(&opts.web, "web", false, "同时启动前端界面并在浏览器中打开")
 	flag.Parse()
 	// 检测是否显式给出 -P/--passwd：空值（-P ''）表示「移除密码」，需与「未提供」区分
@@ -51,7 +50,7 @@ func parseFlags() (*options, []string) {
 	return opts, flag.Args()
 }
 
-// usage 打印命令行帮助信息（help 命令与 -h 共用）。
+// usage 打印命令行帮助信息（-h / --help 触发）。
 func usage() {
 	fmt.Print(`filespace — 文件空间后端（局域网文件共享 API + 前端托管）
 
@@ -59,7 +58,7 @@ func usage() {
   filespace [选项]
 
 无参数运行：读取用户配置目录下的默认配置文件（filespace/config.yaml，
-不存在则自动创建带注释的模板），按其 shared_folders 共享文件夹，不共享当前目录。
+不存在则自动创建带注释的模板），按其 shared_folders 共享文件夹。
 用 -d/--dir 可在配置之外临时追加共享文件夹。
 
 参数:
@@ -74,9 +73,6 @@ func usage() {
                              （传空值 -P '' 表示移除密码）；目录未共享时按「新增共享并设密码」处理
                            也可在 web 端添加/管理共享时按文件夹单独设置密码
   -h, --help              显示本帮助信息
-
-命令:
-  help                    显示本帮助信息
 
 示例:
   filespace                        读取/创建默认配置文件并按配置共享（无共享目录则不共享）

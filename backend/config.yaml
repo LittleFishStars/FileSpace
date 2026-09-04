@@ -3,7 +3,6 @@
 # （Linux ~/.config/filespace/config.yaml，不存在则自动创建），
 # 本文件仅供参考 / 用 -c 显式指定时使用。
 port: 8080         # 监听端口（开发默认；前端 dev 的 /api/* 代理指向此处）
-name: ""           # 可选自定义节点名称
 # passwd: ""       # 默认访问密码（等价于 -P/--passwd）：应用于未显式设置密码的共享文件夹
 
 shared_folders:
@@ -14,6 +13,3 @@ shared_folders:
 discovery:
   service_name: "_filespace._tcp"
   domain: "local."
-
-monitor:
-  interval_sec: 10

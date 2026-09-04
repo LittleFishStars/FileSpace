@@ -84,13 +84,9 @@ func (a *app) startHTTP() {
 	}()
 }
 
-// printStartup 打印服务地址与共享目录列表。
+// printStartup 打印后端 API 地址（共享目录列表已由 resolveSharedFolders 打印）。
 func (a *app) printStartup() {
 	fmt.Printf("🌐 后端 API 已启动: http://%s:%d\n", a.mon.IP(), a.cfg.ListenPort)
-	fmt.Printf("📂 共享 %d 个目录:\n", len(a.cfg.Shared))
-	for _, f := range a.cfg.Shared {
-		fmt.Printf("   - %s（%s）\n", f.Path, f.Name)
-	}
 }
 
 // startDiscovery 注册 mDNS 服务并启动节点发现。

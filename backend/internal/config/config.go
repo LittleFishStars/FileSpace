@@ -29,18 +29,11 @@ type DiscoveryConfig struct {
 	Domain      string `yaml:"domain" json:"domain"`
 }
 
-// MonitorConfig 系统状态采集配置。
-type MonitorConfig struct {
-	IntervalSec int `yaml:"interval_sec" json:"intervalSec"`
-}
-
 // Config 后端配置。
 type Config struct {
 	ListenPort int             `yaml:"port" json:"port"`
-	NodeName   string          `yaml:"name" json:"name"`
 	Shared     []SharedFolder  `yaml:"shared_folders" json:"sharedFolders"`
 	Discovery  DiscoveryConfig `yaml:"discovery" json:"discovery"`
-	Monitor    MonitorConfig   `yaml:"monitor" json:"monitor"`
 	// Passwd 默认访问密码（-P/--passwd 或配置文件顶层 passwd）：
 	// 应用于本节点所有未显式设置密码（shared_folders[].passwd 为空）的共享文件夹。
 	// 为空表示默认不设密码（文件夹保持开放）。
@@ -55,7 +48,6 @@ func DefaultConfig() *Config {
 			ServiceName: "_filespace._tcp",
 			Domain:      "local.",
 		},
-		Monitor: MonitorConfig{IntervalSec: 10},
 	}
 }
 
@@ -110,9 +102,6 @@ const defaultConfigBody = `# filespace 配置文件
 # HTTP 监听端口
 port: 8080
 
-# 可选自定义节点名称（留空取主机名）
-# name: ""
-
 # 默认访问密码：应用于未显式设置密码（shared_folders[].passwd）的共享文件夹。
 # 为空表示默认不设密码（文件夹保持开放）
 passwd: ""
@@ -124,10 +113,6 @@ shared_folders: []
 discovery:
   service_name: "_filespace._tcp"
   domain: "local."
-
-# 系统状态采集间隔（秒）
-monitor:
-  interval_sec: 10
 `
 
 // EnsureDefaultConfig 确保默认配置文件存在：已存在则原样保留，
@@ -143,7 +128,8 @@ func EnsureDefaultConfig(path string) error {
 }
 
 // Save 把配置原子写回文件（先写临时文件再改名）。
-// 供运行中共享列表变更（UI 增删/改密）后持久化使用；shared_folders 仅存密码哈希。
+// 供运行中共享列表变更（UI 增删/改密）后持久化使用；shared_folders 仅存密码哈希，
+// 明文密码在写回前统一转为哈希（见 cmd/filespace 的 persistConfig）。
 func Save(path string, cfg *Config) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
