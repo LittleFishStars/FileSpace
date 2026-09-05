@@ -20,6 +20,11 @@ func main() {
 		log.Fatalf("不支持位置参数，请改用 -d/--dir 指定要共享的文件夹: %v", args)
 	}
 	cfg, configPath := loadConfig(opts)
+	// --save：先把本次命令行参数设置（目录/密码/端口）追加保存到配置文件，
+	// 再按原流程运行（无运行后端则启动；已有后端则交给它），保证持久化与运行一致
+	if opts.save {
+		saveSettingsToConfig(cfg, configPath, opts)
+	}
 
 	// 运行锁：用锁文件标识是否已有后端在运行（含运行在其他端口的实例）
 	lock, existing, err := state.AcquireRunningLock(cfg.ListenPort)
@@ -41,7 +46,12 @@ func main() {
 		log.Fatalf("端口 %d 不可用: %v", cfg.ListenPort, err)
 	}
 
-	resolveSharedFolders(cfg, opts.dirs)
+	startupDirs := opts.dirs
+	if opts.save {
+		// --save 已把 -d/--dir 目录合并进 cfg.Shared，启动路径无需重复合并
+		startupDirs = nil
+	}
+	resolveSharedFolders(cfg, startupDirs)
 
 	// 以是否托管前端界面（--web）为唯一差异启动后端服务
 	runServer(cfg, configPath, opts.web)

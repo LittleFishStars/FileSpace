@@ -21,6 +21,12 @@ import (
 func handoffToExisting(port int, opts *options) {
 	paths := opts.dirs
 	if len(paths) == 0 {
+		if opts.save {
+			// --save 且未给 -d/--dir：配置（顶层默认密码/端口）已保存，
+			// 运行中的后端不支持实时修改这两项，提示重启后生效即可正常退出
+			log.Printf("配置已保存（--save）；运行中的后端（端口 %d）未受影响，重启 filespace 后按新配置生效", port)
+			return
+		}
 		if opts.hasPasswd {
 			log.Fatalf("检测到已有 filespace 后端在运行（端口 %d）：修改/移除密码需要指定目标目录，例如 filespace -d <目录> -P <密码>（-P '' 移除密码）", port)
 		}

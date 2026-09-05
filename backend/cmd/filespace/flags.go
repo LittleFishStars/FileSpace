@@ -13,6 +13,7 @@ type options struct {
 	passwd     string // -P/--passwd：共享访问密码
 	hasPasswd  bool   // 是否显式给出了 -P/--passwd（含空值，空值表示移除密码）
 	web        bool   // --web：同时启动前端界面（静态导出）并在浏览器中打开
+	save       bool   // --save：把本次参数设置追加保存到配置文件
 	showHelp   bool
 }
 
@@ -40,6 +41,7 @@ func parseFlags() (*options, []string) {
 	flag.StringVar(&opts.passwd, "P", "", "共享访问密码（-P, --passwd 简写）")
 	flag.BoolVar(&opts.showHelp, "h", false, "显示帮助信息")
 	flag.BoolVar(&opts.web, "web", false, "同时启动前端界面并在浏览器中打开")
+	flag.BoolVar(&opts.save, "save", false, "把本次参数设置追加保存到配置文件")
 	flag.Parse()
 	// 检测是否显式给出 -P/--passwd：空值（-P ''）表示「移除密码」，需与「未提供」区分
 	flag.Visit(func(f *flag.Flag) {
@@ -59,7 +61,8 @@ func usage() {
 
 无参数运行：读取用户配置目录下的默认配置文件（filespace/config.yaml，
 不存在则自动创建带注释的模板），按其 shared_folders 共享文件夹。
-用 -d/--dir 可在配置之外临时追加共享文件夹。
+用 -d/--dir 可在配置之外临时追加共享文件夹；带 --save 时把本次
+参数设置（目录/密码/端口）追加保存到配置文件，下次无参数运行即按新配置共享。
 
 参数:
   -d, --dir <目录>        要共享的文件夹，可多次指定（在配置文件 shared_folders 之外追加）
@@ -73,6 +76,12 @@ func usage() {
                              （传空值 -P '' 表示移除密码）；目录未共享时按「新增共享并设密码」处理
                            也可在 web 端添加/管理共享时按文件夹单独设置密码
   -h, --help              显示本帮助信息
+  --save                  把本次命令行参数设置追加保存到配置文件后再继续运行：
+                            · -d/--dir 目录：追加到配置文件的 shared_folders（已存在则跳过）
+                            · -P/--passwd：覆盖配置文件顶层的默认访问密码（-P '' 清除）
+                            · -p/--port：覆盖监听端口
+                           需要至少给出上述之一；保存后本次运行照常（无运行后端则启动，
+                           已有后端则按 -d/-P 交给它）
 
 示例:
   filespace                        读取/创建默认配置文件并按配置共享（无共享目录则不共享）
@@ -84,6 +93,10 @@ func usage() {
   filespace -P secret -d ~/docs    设置共享访问密码，并共享 ~/docs
   filespace -d ~/docs -P newpass   已有后端运行时：修改共享目录 ~/docs 的访问密码
   filespace -d ~/docs -P ''        已有后端运行时：移除 ~/docs 的访问密码（恢复开放）
+  filespace -d ~/docs --save       共享 ~/docs 并把该目录追加保存到配置文件
+  filespace -P secret -d ~/docs --save
+                                   共享 ~/docs 并设置默认密码，目录与密码一并保存
+  filespace -p 9000 --save         把监听端口 9000 保存到配置文件
 
 配置优先级: 命令行 -p > 配置文件 > 默认值; -d 指定的目录追加到配置文件的 shared_folders
 之后（重复路径自动去重）。无参数且配置未列共享目录时，后端启动但不共享任何文件夹。
