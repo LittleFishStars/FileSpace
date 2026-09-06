@@ -2,7 +2,7 @@
 
 局域网文件共享工具：用 `-d/--dir` 或配置文件指定要共享的文件夹，打开浏览器即可查看局域网内所有已共享的文件夹。
 
-前后端合并为一个程序：**filespace**（Go 后端二进制）。无参数运行时读取用户配置目录下的默认配置文件（`filespace/config.yaml`，不存在则自动创建），按其 `shared_folders` 共享；带 `--web` 参数时后端托管前端静态资源（`output: 'export'` → `web/out/`，由 `go:embed` 嵌入），在浏览器中打开界面。
+前后端合并为一个程序：**filespace**（Go 后端二进制）。无参数运行时读取默认配置文件（用户配置目录下 `filespace/config.yaml`，不存在则自动创建；环境未定义 `$XDG_CONFIG_HOME`/`$HOME` 时兜底为程序所在目录的 `config.yaml`），按其 `shared_folders` 共享；带 `--web` 参数时后端托管前端静态资源（`output: 'export'` → `web/out/`，由 `go:embed` 嵌入），在浏览器中打开界面。
 
 ## 项目结构
 

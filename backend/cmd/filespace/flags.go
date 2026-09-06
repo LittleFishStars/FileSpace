@@ -7,7 +7,7 @@ import (
 
 // options 命令行选项。
 type options struct {
-	configPath string // -c/--config：配置文件路径（默认取用户配置目录下的 config.yaml）
+	configPath string // -c/--config：配置文件路径（默认用户配置目录下的 config.yaml；无 $HOME/$XDG_CONFIG_HOME 时为程序所在目录）
 	dirs       []string
 	port       int
 	passwd     string // -P/--passwd：共享访问密码
@@ -31,7 +31,7 @@ func (d *dirFlags) Set(v string) error {
 func parseFlags() (*options, []string) {
 	flag.Usage = usage
 	opts := &options{}
-	flag.StringVar(&opts.configPath, "config", "", "配置文件路径（默认 <用户配置目录>/filespace/config.yaml）")
+	flag.StringVar(&opts.configPath, "config", "", "配置文件路径（默认 <用户配置目录>/filespace/config.yaml；无 $HOME 等环境时为程序所在目录的 config.yaml）")
 	flag.StringVar(&opts.configPath, "c", "", "配置文件路径（-c, --config 简写）")
 	flag.Var((*dirFlags)(&opts.dirs), "dir", "要共享的文件夹，可多次指定（-d, --dir）")
 	flag.Var((*dirFlags)(&opts.dirs), "d", "要共享的文件夹（-d, --dir 简写），可多次指定")
@@ -59,15 +59,17 @@ func usage() {
 用法:
   filespace [选项]
 
-无参数运行：读取用户配置目录下的默认配置文件（filespace/config.yaml，
-不存在则自动创建带注释的模板），按其 shared_folders 共享文件夹。
+无参数运行：读取默认配置文件（用户配置目录下 filespace/config.yaml，
+不存在则自动创建带注释的模板；环境未定义 $XDG_CONFIG_HOME/$HOME 时改用
+可执行文件所在目录下的 config.yaml），按其 shared_folders 共享文件夹。
 用 -d/--dir 可在配置之外临时追加共享文件夹；带 --save 时把本次
 参数设置（目录/密码/端口）追加保存到配置文件，下次无参数运行即按新配置共享。
 
 参数:
   -d, --dir <目录>        要共享的文件夹，可多次指定（在配置文件 shared_folders 之外追加）
   --web                   同时启动前端界面并在浏览器中打开（默认只启动后端 API）
-  -c, --config <文件>     配置文件路径（YAML，默认 <用户配置目录>/filespace/config.yaml）
+  -c, --config <文件>     配置文件路径（YAML，默认 <用户配置目录>/filespace/config.yaml；
+                          无 $XDG_CONFIG_HOME/$HOME 时默认取程序所在目录的 config.yaml）
   -p, --port <端口>       监听端口（默认 8080）
   -P, --passwd <密码>     访问密码。两种情形：
                            · 本进程作为后端启动时：作为默认密码，应用于本次共享的文件夹

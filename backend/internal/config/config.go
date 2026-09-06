@@ -73,17 +73,32 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// ConfigDir 返回用户配置目录下的 filespace/ 子目录
-// （默认配置文件与运行锁文件所在处，如 Linux ~/.config/filespace/）。
+// ConfigDir 返回配置目录（默认配置文件与运行锁文件所在处）：
+//   - 常规：用户配置目录下的 filespace/ 子目录（Linux ~/.config/filespace/）
+//   - 兜底：$XDG_CONFIG_HOME 与 $HOME 均未定义（如精简容器/无家目录环境）时，
+//     直接使用可执行文件所在目录——配置文件与运行锁落在程序旁边，无需 -c 也能启动。
 func ConfigDir() (string, error) {
-	dir, err := os.UserConfigDir()
+	if dir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(dir, "filespace"), nil
+	}
+	return exeDir()
+}
+
+// exeDir 返回可执行文件所在目录：解析符号链接到真实位置，
+// 保证无论从哪个路径调用（含软链）兜底配置目录都保持一致。
+func exeDir() (string, error) {
+	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "filespace"), nil
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return filepath.Dir(exe), nil
 }
 
-// DefaultConfigPath 返回默认配置文件路径（用户配置目录下 filespace/config.yaml）。
+// DefaultConfigPath 返回默认配置文件路径（常规为用户配置目录下 filespace/config.yaml，
+// 无家目录环境时为程序所在目录下的 config.yaml）。
 func DefaultConfigPath() (string, error) {
 	dir, err := ConfigDir()
 	if err != nil {

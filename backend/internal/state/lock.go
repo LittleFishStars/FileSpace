@@ -1,4 +1,5 @@
-// Package state 负责本地运行锁的读写（锁文件存放于用户配置目录，标识已有后端在运行）。
+// Package state 负责本地运行锁的读写（锁文件存放于配置目录——用户配置目录下的
+// filespace/，无家目录环境为程序所在目录，标识已有后端在运行）。
 package state
 
 import (

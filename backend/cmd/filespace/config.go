@@ -7,7 +7,8 @@ import (
 )
 
 // loadConfig 加载配置并返回其文件路径：
-//   - 未指定 -c/--config 时使用默认配置文件（用户配置目录 filespace/config.yaml），
+//   - 未指定 -c/--config 时使用默认配置文件：常规在用户配置目录 filespace/config.yaml；
+//     环境未定义 $XDG_CONFIG_HOME/$HOME（如精简容器）时兜底存到可执行文件所在目录。
 //     文件不存在则自动创建带注释的模板（无参数启动完成初始化）；
 //   - -p 覆盖监听端口；-P/--passwd（含空值清除）覆盖配置文件顶层的默认密码。
 //
