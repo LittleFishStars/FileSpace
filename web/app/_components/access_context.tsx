@@ -1,6 +1,6 @@
 'use client'
 
-import React, {createContext, useContext, useEffect, useState} from 'react';
+import React, {createContext, useCallback, useContext, useEffect, useState} from 'react';
 import {fetchNode, type ApiNodeInfo} from '../_lib/api';
 
 /**
@@ -22,39 +22,45 @@ export interface AccessScope {
     status: AccessStatus;
     /** 是否本机（回环）访问；status 非 ready 时为 null */
     isLocalAccess: boolean | null;
+    /** 重新拉取本机节点信息（修改主机名等操作后调用，保持各页面展示同步） */
+    refresh: () => void;
 }
 
 const AccessContext = createContext<AccessScope>({
     node: null,
     status: 'loading',
     isLocalAccess: null,
+    // 初始为 no-op；Provider 挂载后替换为真实拉取（见下方 refresh）
+    refresh: () => {},
 });
 
 export function AccessProvider({children}: {children: React.ReactNode}) {
     const [node, setNode] = useState<ApiNodeInfo | null>(null);
     const [status, setStatus] = useState<AccessStatus>('loading');
 
-    useEffect(() => {
-        let cancelled = false;
+    // 拉取节点信息：初次挂载与 refresh 触发时执行（refresh 不做 loading 回落，
+    // 复用 setNode 原子更新，避免修改主机名后页面闪烁回加载态）
+    const refresh = useCallback(() => {
         fetchNode()
             .then((n) => {
-                if (cancelled) return;
                 setNode(n);
                 setStatus('ready');
             })
             .catch(() => {
-                // 拉取失败：保持 node 为 null，由页面按 error 状态兜底展示
-                if (!cancelled) setStatus('error');
+                // 拉取失败：保留现有数据；首次失败（node 仍为 null）时由页面按 error 状态兜底
+                setStatus('error');
             });
-        return () => {
-            cancelled = true;
-        };
     }, []);
+
+    useEffect(() => {
+        refresh();
+    }, [refresh]);
 
     const value: AccessScope = {
         node,
         status,
         isLocalAccess: node === null ? null : node.local,
+        refresh,
     };
 
     return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;

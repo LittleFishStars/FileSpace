@@ -28,33 +28,38 @@ type Options struct {
 	// Persist 共享列表变更（添加/移除/修改密码）后的持久化回调，
 	// 由外层提供（通常是把当前共享列表写回配置文件）。可为 nil。
 	Persist func()
+	// OnHostname 节点名称变更（本机管理页修改主机名）后的回调：外层据此
+	// 同步 mDNS 宣告并写回配置文件。可为 nil；为 nil 时仅本次运行内存生效。
+	OnHostname func(hostname string)
 }
 
 // Server HTTP API 服务。
 type Server struct {
-	cfg       *config.Config
-	nodeID    string
-	version   string
-	folders   *share.Manager
-	monitor   *monitor.Monitor
-	hostname  string // 节点显示名称（默认系统主机名，可自定义）
-	peers     *discovery.Cache
-	persistFn func()       // 共享列表变更后的持久化回调
-	auth      *auth.Tokens // 访问令牌管理（文件夹级密码认证）
+	cfg        *config.Config
+	nodeID     string
+	version    string
+	folders    *share.Manager
+	monitor    *monitor.Monitor
+	hostname   string // 节点显示名称（默认系统主机名，可自定义）
+	peers      *discovery.Cache
+	persistFn  func()       // 共享列表变更后的持久化回调
+	hostnameFn func(string) // 节点名称变更后的回调（mDNS + 配置持久化）
+	auth       *auth.Tokens // 访问令牌管理（文件夹级密码认证）
 }
 
 // NewServer 创建 API 服务。
 func NewServer(opts Options) *Server {
 	return &Server{
-		cfg:       opts.Config,
-		nodeID:    opts.NodeID,
-		version:   opts.Version,
-		folders:   opts.Folders,
-		monitor:   opts.Monitor,
-		hostname:  opts.Hostname,
-		peers:     opts.Peers,
-		persistFn: opts.Persist,
-		auth:      auth.NewTokens(),
+		cfg:        opts.Config,
+		nodeID:     opts.NodeID,
+		version:    opts.Version,
+		folders:    opts.Folders,
+		monitor:    opts.Monitor,
+		hostname:   opts.Hostname,
+		peers:      opts.Peers,
+		persistFn:  opts.Persist,
+		hostnameFn: opts.OnHostname,
+		auth:       auth.NewTokens(),
 	}
 }
 
@@ -69,6 +74,7 @@ func (s *Server) persistChanged() {
 func (s *Server) apiMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/node", s.handleNode)
+	mux.HandleFunc("POST /api/node/hostname", s.handleSetNodeHostname)
 	mux.HandleFunc("POST /api/auth", s.handleAuth)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("POST /api/folders/add", s.handleAddFolders)

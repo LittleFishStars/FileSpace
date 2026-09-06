@@ -91,6 +91,13 @@ const postJSON = <T>(url: string, body?: unknown) =>
 
 export const fetchNode = () => fetchJSON<ApiNodeInfo>('/api/node')
 
+/**
+ * 修改本节点在局域网中显示的名称（仅本机回环调用生效）。
+ * hostname 为空表示恢复系统主机名。修改后立即生效（/api/node 与 mDNS 宣告同步更新并写回配置文件）。
+ */
+export const setHostname = (hostname: string) =>
+    postJSON<{hostname: string}>('/api/node/hostname', {hostname})
+
 export const fetchFolders = () => fetchJSON<ApiFolderInfo[]>('/api/folders')
 
 export const fetchPeers = () => fetchJSON<ApiPeerInfo[]>('/api/peers')

@@ -30,6 +30,7 @@ type app struct {
 	folders    *share.Manager
 	peers      *discovery.Cache
 	httpSrv    *http.Server
+	registrar  *discovery.Registrar // mDNS 注册句柄（运行中更新 TXT，如修改节点名称）
 	cancel     context.CancelFunc
 }
 
@@ -48,6 +49,7 @@ func runServer(cfg *config.Config, configPath string, withWeb bool) {
 			log.Fatalf("初始化前端静态资源失败: %v", err)
 		}
 	}
+	// 先建 HTTP 服务（节点名称变更回调依赖注册句柄），再启动 mDNS 注册与发现。
 	a.buildHTTPServer(staticFS)
 	a.startHTTP()
 	a.startDiscovery()
@@ -88,6 +90,36 @@ func (a *app) build() {
 	a.peers = discovery.NewCache(a.nodeID)
 }
 
+// mDNSTxt 本节点 mDNS 注册的 TXT 记录（节点标识 / 显示名称 / 版本）。
+func (a *app) mDNSTxt() map[string]string {
+	return map[string]string{"id": a.nodeID, "hostname": a.nodeName, "version": filespace.Version}
+}
+
+// updateNodeName 运行中修改节点显示名称：
+//   - 更新 mDNS TXT 宣告（其他节点列表即时刷新）；
+//   - 写回配置文件（重启后仍保留；无配置文件时跳过）。
+//
+// systemHostname 为真表示恢复系统主机名（配置 hostname 清空）。
+func (a *app) updateNodeName(hostname string, systemHostname bool) {
+	a.nodeName = hostname
+	if systemHostname {
+		a.nodeName = a.mon.Hostname() // 与启动语义一致：配置为空时显示系统主机名
+	}
+	if a.registrar != nil {
+		a.registrar.SetHostname(a.nodeName, a.mDNSTxt())
+	}
+	if a.configPath != "" && a.cfg != nil {
+		updated := *a.cfg
+		updated.Hostname = hostname // 持久化用户输入本身（空表示恢复系统主机名，重启时按此解析）
+		if err := config.Save(a.configPath, &updated); err != nil {
+			log.Printf("写回节点名称到配置文件失败: %v", err)
+			return
+		}
+		a.cfg.Hostname = updated.Hostname
+		fmt.Printf("已把节点名称写回配置文件: %s\n", a.configPath)
+	}
+}
+
 // buildHTTPServer 创建 HTTP 服务。
 // staticFS 不为 nil 时，组合 API 路由与静态文件服务器（--web 模式）；
 // 为 nil 时，仅提供纯 API 路由。
@@ -102,6 +134,10 @@ func (a *app) buildHTTPServer(staticFS http.FileSystem) {
 		Peers:    a.peers,
 		// 共享列表变更（UI 添加/移除/改密）后立即写回配置文件
 		Persist: func() { persistConfig(a.configPath, a.cfg, a.folders) },
+		// 节点名称变更（本机管理页修改主机名）后同步 mDNS 宣告并写回配置文件
+		OnHostname: func(hostname string) {
+			a.updateNodeName(hostname, hostname == "")
+		},
 	})
 	var handler http.Handler
 	if staticFS != nil {
@@ -125,9 +161,11 @@ func (a *app) startHTTP() {
 func (a *app) startDiscovery() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
-	txt := map[string]string{"id": a.nodeID, "hostname": a.nodeName, "version": filespace.Version}
-	if err := discovery.Register(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.nodeID, a.cfg.ListenPort, txt); err != nil {
+	reg, err := discovery.Register(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.nodeID, a.cfg.ListenPort, a.mDNSTxt())
+	if err != nil {
 		log.Printf("mDNS 注册失败: %v", err)
+	} else {
+		a.registrar = reg // 注册成功后才可支持运行中更新 TXT
 	}
 	go discovery.Watch(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.peers)
 }
