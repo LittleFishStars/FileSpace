@@ -1,6 +1,6 @@
 {
   "name": "file-space",
-  "version": "0.4.2-2609061938",
+  "version": "0.4.3-2609070011",
   "private": true,
   "scripts": {
     "dev": "next dev",

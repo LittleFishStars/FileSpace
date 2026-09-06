@@ -53,7 +53,7 @@
 │   │   ├── share/        # 共享目录：注册表(manager) / 密码(password) / 统计缓存(stats) / 扫描(tree) / 监听(watcher)
 │   │   └── state/        # 本地运行锁
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.4.2-2609061938）
+│   └── version.go        # 版本号（当前 0.4.3-2609070011）
 └── build/                # 构建产物（gitignored）：build/<平台>/（后端，含嵌入的前端静态资源）
 ```
 
