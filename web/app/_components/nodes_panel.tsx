@@ -37,10 +37,14 @@ export default function NodesPanel() {
     } else if (hosts.length === 0) {
         content = <Empty description="暂无其他节点"/>;
     } else {
+        // 节点卡片横向滚动：flex-1 让卡片优先收缩宽度尽量全部显示，
+        // 缩到 min-w 最小宽度仍放不下时出现横向滚动条。
         content = (
-            <div className="flex flex-col gap-4">
+            <div className="nodes-hscroll flex items-start gap-4 overflow-x-auto pb-2">
                 {hosts.map((host) => (
-                    <HostCard key={host.id} host={host}/>
+                    <div key={host.id} className="min-w-[300px] flex-1">
+                        <HostCard host={host}/>
+                    </div>
                 ))}
             </div>
         );
