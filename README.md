@@ -86,6 +86,7 @@ make dev-backend      # 只启动后端（Go API，:8080）
 ```bash
 make build                    # 全部平台（等价 python3 scripts/build.py）
 make build-linux              # 只编译 Linux x64
+make build-linux-aarch64      # 只编译 Linux ARM64 (aarch64)
 make build-windows            # 只编译 Windows x64
 make build-darwin             # 只编译 macOS Apple Silicon
 make build-darwin-amd64       # 只编译 macOS Intel

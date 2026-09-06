@@ -3,7 +3,7 @@
 # 开发：      make dev             → 前端（:3000）+ 后端（:8080，自动拉起）
 #             make dev-web / make dev-backend → 单独启动
 # 生产构建：  make build           → 全部平台（等价 python3 scripts/build.py）
-# 指定平台：  make build-linux / build-windows / build-darwin / build-darwin-amd64
+# 指定平台：  make build-linux / build-linux-aarch64 / build-windows / build-darwin / build-darwin-amd64
 # 清理：      make clean
 #
 # 构建逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/ 下：
@@ -12,7 +12,7 @@
 #   build/<平台>/filespace            # 只启动后端 API
 #   build/<平台>/filespace --web      # 启动后端 + 前端界面，并在浏览器中打开
 
-.PHONY: dev dev-web dev-backend build build-linux build-windows build-darwin build-darwin-amd64 clean
+.PHONY: dev dev-web dev-backend build build-linux build-linux-aarch64 build-windows build-darwin build-darwin-amd64 clean
 
 # 开发：前端（Next.js dev server，:3000）+ 后端（Go API，:8080）
 # （scripts/dev.py 自动拉起后端，前端通过 rewrites 反代 /api）
@@ -27,13 +27,16 @@ dev-backend:
 dev:
 	python3 scripts/dev.py
 
-# 生产构建：全部平台（linux / windows / darwin / darwin-amd64）
+# 生产构建：全部平台（linux / linux-aarch64 / windows / darwin / darwin-amd64）
 build:
 	python3 scripts/build.py
 
 # 生产构建：指定平台
 build-linux:
 	python3 scripts/build.py linux
+
+build-linux-aarch64:
+	python3 scripts/build.py linux-aarch64
 
 build-windows:
 	python3 scripts/build.py windows

@@ -17,7 +17,7 @@
 make dev                    # 前端 :3000 + 后端 :8080（scripts/dev.py 自动拉起后端）
 make dev-web / dev-backend  # 单独启动（dev-web 同 dev）
 make build                  # 全部平台构建（等价 python3 scripts/build.py）
-make build-linux / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
+make build-linux / build-linux-aarch64 / build-windows / build-darwin / build-darwin-amd64  # 指定平台交叉编译
 python3 scripts/build.py windows darwin   # 脚本直接调用，可多平台
 python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 ```

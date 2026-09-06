@@ -37,6 +37,7 @@ class Platform:
 
 PLATFORMS = {
     "linux": Platform("linux", "linux", "amd64", "Linux x86_64"),
+    "linux-aarch64": Platform("linux-aarch64", "linux", "arm64", "Linux ARM64 (aarch64)"),
     "windows": Platform("windows", "windows", "amd64", "Windows x86_64"),
     "darwin": Platform("darwin", "darwin", "arm64", "macOS Apple Silicon"),
     "darwin-amd64": Platform("darwin-amd64", "darwin", "amd64", "macOS Intel"),
