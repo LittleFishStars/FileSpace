@@ -12,7 +12,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	ip := s.monitor.IP()
 	info := model.NodeInfo{
 		ID:              s.nodeID,
-		Hostname:        s.monitor.Hostname(),
+		Hostname:        s.hostname, // 节点显示名称：自定义（--hostname/配置 hostname）优先，否则系统主机名
 		IP:              ip,
 		OS:              s.monitor.OS(),
 		SoftwareVersion: s.version,

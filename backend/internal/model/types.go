@@ -3,7 +3,8 @@ package model
 
 // NodeInfo 节点信息。
 type NodeInfo struct {
-	ID              string `json:"id"`
+	ID string `json:"id"`
+	// Hostname 节点显示名称：默认系统主机名，可经 --hostname / 配置顶层 hostname 自定义。
 	Hostname        string `json:"hostname"`
 	IP              string `json:"ip"`
 	OS              string `json:"os"`

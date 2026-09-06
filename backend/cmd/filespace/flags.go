@@ -12,6 +12,8 @@ type options struct {
 	port       int
 	passwd     string // -P/--passwd：共享访问密码
 	hasPasswd  bool   // 是否显式给出了 -P/--passwd（含空值，空值表示移除密码）
+	hostname   string // --hostname：自定义节点名称（默认用系统主机名）
+	hasHost    bool   // 是否显式给出了 --hostname（含空值，空值表示恢复系统主机名）
 	web        bool   // --web：同时启动前端界面（静态导出）并在浏览器中打开
 	save       bool   // --save：把本次参数设置追加保存到配置文件
 	showHelp   bool
@@ -39,14 +41,19 @@ func parseFlags() (*options, []string) {
 	flag.IntVar(&opts.port, "p", 0, "监听端口（-p, --port 简写）")
 	flag.StringVar(&opts.passwd, "passwd", "", "共享访问密码")
 	flag.StringVar(&opts.passwd, "P", "", "共享访问密码（-P, --passwd 简写）")
+	flag.StringVar(&opts.hostname, "hostname", "", "自定义节点名称（本节点在局域网中显示的名称；默认用系统主机名）")
 	flag.BoolVar(&opts.showHelp, "h", false, "显示帮助信息")
 	flag.BoolVar(&opts.web, "web", false, "同时启动前端界面并在浏览器中打开")
 	flag.BoolVar(&opts.save, "save", false, "把本次参数设置追加保存到配置文件")
 	flag.Parse()
 	// 检测是否显式给出 -P/--passwd：空值（-P ''）表示「移除密码」，需与「未提供」区分
+	// （--hostname 同理：空值（--hostname ''）表示「恢复系统主机名」）
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "passwd" || f.Name == "P" {
+		switch f.Name {
+		case "passwd", "P":
 			opts.hasPasswd = true
+		case "hostname":
+			opts.hasHost = true
 		}
 	})
 	return opts, flag.Args()
@@ -63,7 +70,7 @@ func usage() {
 不存在则自动创建带注释的模板；环境未定义 $XDG_CONFIG_HOME/$HOME 时改用
 可执行文件所在目录下的 config.yaml），按其 shared_folders 共享文件夹。
 用 -d/--dir 可在配置之外临时追加共享文件夹；带 --save 时把本次
-参数设置（目录/密码/端口）追加保存到配置文件，下次无参数运行即按新配置共享。
+参数设置（目录/密码/端口/节点名称）追加保存到配置文件，下次无参数运行即按新配置共享。
 
 参数:
   -d, --dir <目录>        要共享的文件夹，可多次指定（在配置文件 shared_folders 之外追加）
@@ -77,11 +84,16 @@ func usage() {
                            · 已有后端在运行时：需与 -d/--dir 配合，修改该目录的访问密码
                              （传空值 -P '' 表示移除密码）；目录未共享时按「新增共享并设密码」处理
                            也可在 web 端添加/管理共享时按文件夹单独设置密码
+  --hostname <名称>       自定义本节点在局域网中显示的名称（默认用系统主机名；
+                           也受配置文件顶层 hostname 控制，命令行优先）。
+                           节点 ID 仍按系统主机名生成，改名不影响其他节点对它的识别。
+                           已有后端在运行时该参数不生效（属启动型参数，配合 --save 保存后重启生效）
   -h, --help              显示本帮助信息
   --save                  把本次命令行参数设置追加保存到配置文件后再继续运行：
                             · -d/--dir 目录：追加到配置文件的 shared_folders（已存在则跳过）
                             · -P/--passwd：覆盖配置文件顶层的默认访问密码（-P '' 清除）
                             · -p/--port：覆盖监听端口
+                            · --hostname：覆盖配置顶层的节点名称（--hostname '' 恢复系统主机名）
                            需要至少给出上述之一；保存后本次运行照常（无运行后端则启动，
                            已有后端则按 -d/-P 交给它）
 
@@ -93,6 +105,10 @@ func usage() {
   filespace -d ~/docs -d /mnt/data 额外共享多个目录
   filespace -c config.yaml         使用指定配置文件
   filespace -P secret -d ~/docs    设置共享访问密码，并共享 ~/docs
+  filespace --hostname 客厅电脑 -d ~/docs
+                                   自定义节点名称为「客厅电脑」并共享 ~/docs
+  filespace --hostname 客厅电脑 --save
+                                   把节点名称保存到配置文件（下次无参数启动即生效）
   filespace -d ~/docs -P newpass   已有后端运行时：修改共享目录 ~/docs 的访问密码
   filespace -d ~/docs -P ''        已有后端运行时：移除 ~/docs 的访问密码（恢复开放）
   filespace -d ~/docs --save       共享 ~/docs 并把该目录追加保存到配置文件

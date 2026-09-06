@@ -38,6 +38,10 @@ type Config struct {
 	// 应用于本节点所有未显式设置密码（shared_folders[].passwd 为空）的共享文件夹。
 	// 为空表示默认不设密码（文件夹保持开放）。
 	Passwd string `yaml:"passwd" json:"passwd"`
+	// Hostname 本节点在局域网中显示的名称（节点名称，--hostname 或配置文件顶层 hostname）。
+	// 为空时使用系统主机名。仅影响展示与上报（/api/node 的 hostname、mDNS TXT），
+	// 节点 ID 仍由系统主机名生成（见 cmd/filespace run.go），改名不会影响节点身份。
+	Hostname string `yaml:"hostname" json:"hostname"`
 }
 
 // DefaultConfig 返回默认配置。
@@ -121,6 +125,10 @@ port: 8080
 # 默认访问密码：应用于未显式设置密码（shared_folders[].passwd）的共享文件夹。
 # 为空表示默认不设密码（文件夹保持开放）
 passwd: ""
+
+# 节点名称：本节点在局域网中显示的名称（其他节点列表里看到的名字）。
+# 为空（默认）时使用系统主机名；也可用命令行 --hostname 临时指定或配合 --save 保存
+hostname: ""
 
 # 共享目录列表：在此列出要共享的文件夹；也可用命令行 -d/--dir 追加
 shared_folders: []

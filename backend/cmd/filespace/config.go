@@ -10,7 +10,8 @@ import (
 //   - 未指定 -c/--config 时使用默认配置文件：常规在用户配置目录 filespace/config.yaml；
 //     环境未定义 $XDG_CONFIG_HOME/$HOME（如精简容器）时兜底存到可执行文件所在目录。
 //     文件不存在则自动创建带注释的模板（无参数启动完成初始化）；
-//   - -p 覆盖监听端口；-P/--passwd（含空值清除）覆盖配置文件顶层的默认密码。
+//   - -p 覆盖监听端口；-P/--passwd（含空值清除）覆盖配置文件顶层的默认密码；
+//     --hostname（含空值恢复系统主机名）覆盖配置顶层的节点名称。
 //
 // 返回的 configPath 供运行中共享列表变更后写回（见 api persistConfig）。
 func loadConfig(opts *options) (*config.Config, string) {
@@ -36,6 +37,10 @@ func loadConfig(opts *options) (*config.Config, string) {
 	// -P/--passwd 显式给出（含空值）时覆盖配置文件顶层的默认密码
 	if opts.hasPasswd {
 		cfg.Passwd = opts.passwd
+	}
+	// --hostname 显式给出（含空值清除，恢复系统主机名）时覆盖配置顶层的节点名称
+	if opts.hasHost {
+		cfg.Hostname = opts.hostname
 	}
 	return cfg, path
 }

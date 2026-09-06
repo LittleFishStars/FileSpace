@@ -24,6 +24,7 @@ type app struct {
 	cfg        *config.Config
 	configPath string // 当前生效的配置文件路径（供运行中共享变更写回）
 	nodeID     string
+	nodeName   string // 节点显示名称（默认系统主机名；--hostname / 配置 hostname 自定义）
 	mon        *monitor.Monitor
 	folders    *share.Manager
 	peers      *discovery.Cache
@@ -71,6 +72,14 @@ func (a *app) announceStartup(withWeb bool) {
 // build 组装各组件（监控、共享管理器、发现缓存）。
 func (a *app) build() {
 	a.mon = monitor.New()
+	// 节点显示名称：配置/--hostname 自定义优先，否则用系统主机名。
+	// 注意：节点 ID 始终基于系统主机名（mon.Hostname()）生成而非显示名称——
+	// 保证同一物理机的身份稳定（mDNS 去重与自识别不受改名影响，两台机器
+	// 设成同名也不会互相误认为同一节点）。
+	a.nodeName = a.mon.Hostname()
+	if a.cfg.Hostname != "" {
+		a.nodeName = a.cfg.Hostname
+	}
 	a.nodeID = config.NodeID(a.mon.Hostname())
 	a.folders = share.NewManager(a.cfg.Shared)
 	// 启动时后台预扫共享目录填充统计缓存（不阻塞启动，列表接口首次请求即可拿到统计）
@@ -83,12 +92,13 @@ func (a *app) build() {
 // 为 nil 时，仅提供纯 API 路由。
 func (a *app) buildHTTPServer(staticFS http.FileSystem) {
 	srv := api.NewServer(api.Options{
-		Config:  a.cfg,
-		NodeID:  a.nodeID,
-		Version: filespace.Version,
-		Folders: a.folders,
-		Monitor: a.mon,
-		Peers:   a.peers,
+		Config:   a.cfg,
+		NodeID:   a.nodeID,
+		Version:  filespace.Version,
+		Folders:  a.folders,
+		Monitor:  a.mon,
+		Hostname: a.nodeName, // 节点显示名称（/api/node 的 hostname 字段）
+		Peers:    a.peers,
 		// 共享列表变更（UI 添加/移除/改密）后立即写回配置文件
 		Persist: func() { persistConfig(a.configPath, a.cfg, a.folders) },
 	})
@@ -114,7 +124,7 @@ func (a *app) startHTTP() {
 func (a *app) startDiscovery() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
-	txt := map[string]string{"id": a.nodeID, "hostname": a.mon.Hostname(), "version": filespace.Version}
+	txt := map[string]string{"id": a.nodeID, "hostname": a.nodeName, "version": filespace.Version}
 	if err := discovery.Register(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.nodeID, a.cfg.ListenPort, txt); err != nil {
 		log.Printf("mDNS 注册失败: %v", err)
 	}

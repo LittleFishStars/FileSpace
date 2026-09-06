@@ -30,7 +30,7 @@ func handoffToExisting(port int, opts *options) {
 		if opts.hasPasswd {
 			log.Fatalf("检测到已有 filespace 后端在运行（端口 %d）：修改/移除密码需要指定目标目录，例如 filespace -d <目录> -P <密码>（-P '' 移除密码）", port)
 		}
-		log.Fatalf("检测到已有 filespace 后端在运行（端口 %d），仅支持使用 -d/--dir 追加共享目录（无参数启动、--web 等独占模式不适用）", port)
+		log.Fatalf("检测到已有 filespace 后端在运行（端口 %d），仅支持使用 -d/--dir 追加共享目录（无参数启动、--web、--hostname 等启动型/独占模式不适用）", port)
 	}
 	if opts.hasPasswd {
 		handoffSetPasswords(port, paths, opts.passwd)

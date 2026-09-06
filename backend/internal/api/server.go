@@ -21,6 +21,10 @@ type Options struct {
 	Folders *share.Manager
 	Monitor *monitor.Monitor
 	Peers   *discovery.Cache
+	// Hostname 本节点在局域网中显示的名称（默认系统主机名，可由 --hostname / 配置
+	// hostname 自定义）。Monitor.Hostname() 仍返回真实系统主机名（节点 ID 依赖它），
+	// 二者在自定义节点名称时不同。
+	Hostname string
 	// Persist 共享列表变更（添加/移除/修改密码）后的持久化回调，
 	// 由外层提供（通常是把当前共享列表写回配置文件）。可为 nil。
 	Persist func()
@@ -33,6 +37,7 @@ type Server struct {
 	version   string
 	folders   *share.Manager
 	monitor   *monitor.Monitor
+	hostname  string // 节点显示名称（默认系统主机名，可自定义）
 	peers     *discovery.Cache
 	persistFn func()       // 共享列表变更后的持久化回调
 	auth      *auth.Tokens // 访问令牌管理（文件夹级密码认证）
@@ -46,6 +51,7 @@ func NewServer(opts Options) *Server {
 		version:   opts.Version,
 		folders:   opts.Folders,
 		monitor:   opts.Monitor,
+		hostname:  opts.Hostname,
 		peers:     opts.Peers,
 		persistFn: opts.Persist,
 		auth:      auth.NewTokens(),
