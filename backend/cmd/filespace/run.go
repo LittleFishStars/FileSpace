@@ -129,7 +129,7 @@ func (a *app) startDiscovery() {
 	if err := discovery.Register(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.nodeID, a.cfg.ListenPort, txt); err != nil {
 		log.Printf("mDNS 注册失败: %v", err)
 	}
-	go discovery.Watch(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.peers, 3*time.Second)
+	go discovery.Watch(ctx, a.cfg.Discovery.ServiceName, a.cfg.Discovery.Domain, a.peers)
 }
 
 // waitAndShutdown 等待退出信号（Ctrl+C / kill / 终端关闭），记录共享目录后优雅关闭。

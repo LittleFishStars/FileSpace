@@ -41,6 +41,7 @@ func NotifyExit(ctx context.Context, cache *Cache, selfID string, timeout time.D
 }
 
 // sendGoodbye 向单个节点发送退出通知（POST /api/peers/goodbye）。
+// 复用包级 httpClient（带超时的连接池客户端）；timeout 通过请求 context 生效。
 func sendGoodbye(ctx context.Context, p *model.PeerInfo, selfID string, timeout time.Duration) error {
 	body, err := json.Marshal(map[string]string{"id": selfID})
 	if err != nil {
@@ -53,7 +54,7 @@ func sendGoodbye(ctx context.Context, p *model.PeerInfo, selfID string, timeout 
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

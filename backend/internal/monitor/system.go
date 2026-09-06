@@ -91,15 +91,34 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
-// localIP 返回第一个非回环 IPv4 地址。
+// localIP 返回本机局域网 IPv4 地址（用于 /api/node 上报与启动提示）：
+// 优先选择「启用且支持组播/广播」的真实局域网接口（普通以太网/Wi-Fi），
+// 跳过 tun/VPN 点对点隧道与 docker0 等虚拟网桥——否则隧道地址排前时会把
+// 内网虚拟地址误报为本机局域网入口；全部不满足时回退到任意非回环 IPv4。
 func localIP() string {
-	addrs, err := net.InterfaceAddrs()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "127.0.0.1"
 	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-			return ipnet.IP.String()
+	// 两轮遍历：第一轮只收真实局域网接口（UP + MULTICAST/BROADCAST），
+	// 第二轮放开到任意 UP 非回环接口（如隧道环境仅有内网地址可用）。
+	for pass := 0; pass < 2; pass++ {
+		for _, ifi := range ifaces {
+			if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			if pass == 0 && ifi.Flags&(net.FlagMulticast|net.FlagBroadcast) == 0 {
+				continue // 第一轮：排除点对点隧道 / 无广播组播的虚拟接口
+			}
+			addrs, err := ifi.Addrs()
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.IsGlobalUnicast() && ipnet.IP.To4() != nil {
+					return ipnet.IP.String()
+				}
+			}
 		}
 	}
 	return "127.0.0.1"
