@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"sync"
 	"syscall"
 	"time"
 
@@ -153,12 +154,19 @@ func (a *app) waitAndShutdown() {
 	_ = a.httpSrv.Shutdown(shutdownCtx)
 }
 
+// persistMu 串行化配置写回：UI 增删共享/改密（HTTP 请求处理 goroutine）与
+// 退出前写回可能并发触发 persistConfig，其中对 cfg.Shared 的读-比较-写
+// 需互斥，避免数据竞争与交错写盘。
+var persistMu sync.Mutex
+
 // persistConfig 把当前共享列表（含运行中 UI 添加/移除/改密的目录与密码哈希）
 // 写回配置文件，保证重启后仍按最新列表共享。仅在列表相对启动配置有变化时写入。
 func persistConfig(configPath string, cfg *config.Config, folders *share.Manager) {
 	if configPath == "" {
 		return
 	}
+	persistMu.Lock()
+	defer persistMu.Unlock()
 	current := canonicalSharedFolders(folders.SharedSnapshot())
 	if reflect.DeepEqual(current, canonicalSharedFolders(cfg.Shared)) {
 		return // 与启动时一致，无需写回

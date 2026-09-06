@@ -10,8 +10,7 @@ import (
 // 这是本机专属能力（在运行后端的机器上唤起桌面应用），仅允许本机调用，
 // 防止局域网内其他机器通过该接口在主机上执行打开操作。
 func (s *Server) handleOpenFile(w http.ResponseWriter, r *http.Request) {
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "仅允许本机调用")
+	if !requireLoopback(w, r) {
 		return
 	}
 	id := r.PathValue("id")

@@ -10,8 +10,7 @@ import (
 // 弹出系统对话框并直接取得路径（Linux 用 zenity/kdialog 等，Windows 用
 // PowerShell FolderBrowserDialog，macOS 用 osascript choose folder）。
 func (s *Server) handlePickDirectory(w http.ResponseWriter, r *http.Request) {
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "仅允许本机调用")
+	if !requireLoopback(w, r) {
 		return
 	}
 	path, err := pickDirectoryDialog()
