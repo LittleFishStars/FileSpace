@@ -115,6 +115,10 @@ func probePeer(ctx context.Context, p model.PeerInfo, timeout time.Duration) err
 }
 
 // handleEntry 处理一个 mDNS 服务条目，抓取节点详情后写入缓存。
+//
+// 节点可能公布多个 IP（默认网卡 + VPN/tun 等）。逐个尝试直到连通，
+// 并用第一个成功连接的 IP 覆盖对方上报的默认网卡 IP（见 fetchPeer 注释），
+// 保证前端展示与后续访问（HTTP 心跳、目录/下载）都走「实际连接到的地址」。
 func handleEntry(ctx context.Context, entry *zeroconf.ServiceEntry, cache *Cache, timeout time.Duration) {
 	id := txtValue(entry.Text, "id")
 	if id == "" || len(entry.AddrIPv4) == 0 || entry.Port == 0 {
@@ -123,11 +127,14 @@ func handleEntry(ctx context.Context, entry *zeroconf.ServiceEntry, cache *Cache
 	if cache.IsSelf(id) {
 		return
 	}
-	peer, err := fetchPeer(ctx, entry.AddrIPv4[0].String(), entry.Port, timeout)
-	if err != nil {
+	for _, ip := range entry.AddrIPv4 {
+		peer, err := fetchPeer(ctx, ip.String(), entry.Port, timeout)
+		if err != nil {
+			continue
+		}
+		cache.UpsertPeer(peer)
 		return
 	}
-	cache.UpsertPeer(peer)
 }
 
 // txtValue 从 TXT 记录中取出指定 key 的值（记录形如 "key=value"）。
@@ -142,6 +149,11 @@ func txtValue(records []string, key string) string {
 }
 
 // fetchPeer 请求远程节点的 /api/node 与 /api/folders 构建 PeerInfo。
+//
+// ip 是本机实际连通的远程地址（mDNS 条目中各候选之一），用它覆盖对方
+// 上报的默认网卡 IP：对方的 NodeInfo.IP/ListenAddr 是它自己的第一个非回环
+// 地址，在跨网络组网（如经 tun0 VPN 互联）时不可达，直接展示/访问会走错网。
+// 此前端展示与实际访问（HTTP 心跳、目录列表、下载）都以「实际连接到的地址」为准。
 func fetchPeer(ctx context.Context, ip string, port int, timeout time.Duration) (*model.PeerInfo, error) {
 	base := fmt.Sprintf("http://%s:%d", ip, port)
 	client := &http.Client{Timeout: timeout}
@@ -154,6 +166,9 @@ func fetchPeer(ctx context.Context, ip string, port int, timeout time.Duration) 
 	if err := getJSON(ctx, client, base+"/api/folders", &folders); err != nil {
 		return nil, err
 	}
+	// 用实际连接地址覆盖对方上报的默认网卡 IP（保证展示与访问可达）。
+	node.IP = ip
+	node.ListenAddr = fmt.Sprintf("%s:%d", ip, port)
 	return &model.PeerInfo{
 		Node:     node,
 		Folders:  folders,
