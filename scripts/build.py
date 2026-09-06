@@ -15,8 +15,8 @@
   --web 参数：后端托管前端静态资源（output: 'export' → web/out/，由 go:embed 嵌入），
             在浏览器中打开界面。
 
-产物输出到 build/ 下，后端按平台分目录：
-    build/<平台>/     后端（filespace，含嵌入的前端静态资源）
+产物输出到 build/ 下，后端按「系统-架构」分目录（如 linux-amd64 / windows-amd64 / darwin-arm64）：
+    build/<系统-架构>/     后端（filespace，含嵌入的前端静态资源）
 
 构建流程：
     1. pnpm build（output: 'export' → web/out/）
@@ -40,11 +40,16 @@ from _build_compile import build_platforms
 def clean():
     """清理构建产物，保留 build/ 下的 Go 构建缓存。"""
     print("==> 清理构建产物 ...")
-    for name in PLATFORMS:
-        d = os.path.join(BUILD_DIR, name)
+    for name, p in PLATFORMS.items():
+        d = os.path.join(BUILD_DIR, p.dir)
         if os.path.isdir(d):
             shutil.rmtree(d)
             print("   已删除 %s" % d)
+        # 兼容旧命名（build/<参数名>/，如 build/linux）的历史遗留目录
+        legacy = os.path.join(BUILD_DIR, name)
+        if legacy != d and os.path.isdir(legacy):
+            shutil.rmtree(legacy)
+            print("   已删除（旧命名遗留）%s" % legacy)
     if os.path.isdir(WEB_EXPORT):
         shutil.rmtree(WEB_EXPORT)
         print("   已删除 %s" % WEB_EXPORT)
@@ -63,7 +68,7 @@ def list_platforms():
     """打印支持的平台。"""
     print("支持的平台：")
     for name, p in PLATFORMS.items():
-        print("  %-14s %s" % (name, p.description))
+        print("  %-14s %s  →  build/%s/" % (name, p.description, p.dir))
     print("不传平台参数时编译全部平台。")
 
 

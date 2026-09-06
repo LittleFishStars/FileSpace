@@ -9,7 +9,7 @@
 - `web/`     — 前端（Next.js 16 App Router + antd + Tailwind v4）：`next.config.ts` 配置 `output: 'export'`（生产）与 `rewrites`（开发模式反代 /api）
 - `backend/` — 后端（Go，P2P + mDNS）：`cmd/filespace`（API + `--web` 模式静态文件托管）
 - `scripts/` — 构建脚本（`build.py`）与开发启动脚本（`dev.py`），Python
-- `build/`   — 构建产物（gitignored）：`build/<平台>/`（后端，含嵌入的前端静态资源）
+- `build/`   — 构建产物（gitignored）：`build/<系统-架构>/`（后端，含嵌入的前端静态资源，如 `build/linux-amd64/`）
 
 ## 常用命令
 
