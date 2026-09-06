@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 )
@@ -21,8 +20,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req authRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+	if !decodeJSONBody(w, r, &req) {
 		return
 	}
 	if !s.folders.MatchPassword(req.Password) {

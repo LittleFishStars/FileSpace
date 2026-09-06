@@ -23,6 +23,27 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+// requireLoopback 校验请求来自本机回环地址（本机专属端点：增删共享、改密、
+// 打开文件、目录选择器的共同安全约束）；不满足时已写出 403 响应，
+// 返回 false，调用方应直接结束处理。
+func requireLoopback(w http.ResponseWriter, r *http.Request) bool {
+	if isLoopbackRequest(r) {
+		return true
+	}
+	writeError(w, http.StatusForbidden, "仅允许本机调用")
+	return false
+}
+
+// decodeJSONBody 解析 JSON 请求体；格式错误时已写出 400 响应，
+// 返回 false，调用方应直接结束处理。
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, out any) bool {
+	if err := json.NewDecoder(r.Body).Decode(out); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+		return false
+	}
+	return true
+}
+
 // writeFolderError 把 share 包的错误映射为 HTTP 状态码。
 func writeFolderError(w http.ResponseWriter, err error) {
 	switch {

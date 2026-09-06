@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"filespace/internal/model"
@@ -30,7 +29,7 @@ type peerGoodbyeRequest struct {
 // 危害有限，故不做更严格的来源校验（避免跨网络组网场景误伤）。
 func (s *Server) handlePeerGoodbye(w http.ResponseWriter, r *http.Request) {
 	var req peerGoodbyeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+	if !decodeJSONBody(w, r, &req) || req.ID == "" {
 		writeError(w, http.StatusBadRequest, "缺少节点 id")
 		return
 	}

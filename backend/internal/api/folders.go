@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -25,13 +24,11 @@ type addFoldersRequest struct {
 // 本机管理页添加共享文件夹时亦可指定该文件夹的访问密码）。
 // 仅允许本机（回环地址）调用，防止局域网内其他机器随意向本机追加共享目录。
 func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "仅允许本机调用")
+	if !requireLoopback(w, r) {
 		return
 	}
 	var req addFoldersRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+	if !decodeJSONBody(w, r, &req) {
 		return
 	}
 	if len(req.Paths) == 0 {
@@ -45,6 +42,8 @@ func (s *Server) handleAddFolders(w http.ResponseWriter, r *http.Request) {
 			continue // 已在共享列表中，视为成功
 		}
 		if err != nil {
+			// 本请求此前可能已成功添加部分目录：先写回配置文件，避免进程被强杀时丢失
+			s.persistChanged()
 			writeError(w, http.StatusBadRequest, "追加失败: "+err.Error())
 			return
 		}
@@ -61,13 +60,11 @@ type removeFolderRequest struct {
 
 // handleRemoveFolder 移除共享目录（仅允许本机调用，与添加共享目录同等安全约束）。
 func (s *Server) handleRemoveFolder(w http.ResponseWriter, r *http.Request) {
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "仅允许本机调用")
+	if !requireLoopback(w, r) {
 		return
 	}
 	var req removeFolderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+	if !decodeJSONBody(w, r, &req) {
 		return
 	}
 	if req.ID == "" {
@@ -95,13 +92,11 @@ type setPasswordRequest struct {
 // password 为空表示移除密码：文件夹恢复开放，此前签发的访问令牌自动失效
 // （令牌绑定密码哈希，移除后授权路径不再校验）。
 func (s *Server) handleSetFolderPassword(w http.ResponseWriter, r *http.Request) {
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "仅允许本机调用")
+	if !requireLoopback(w, r) {
 		return
 	}
 	var req setPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式错误: "+err.Error())
+	if !decodeJSONBody(w, r, &req) {
 		return
 	}
 	if req.Path == "" {
