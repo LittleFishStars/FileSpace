@@ -39,10 +39,12 @@ export default function NodesPanel() {
     } else {
         // 节点卡片横向滚动：flex-1 让卡片优先收缩宽度尽量全部显示，
         // 缩到 min-w 最小宽度仍放不下时出现横向滚动条。
+        // min-w 取 500px：多节点时卡片保持较宽（节点信息/文件夹卡更舒展），
+        // 单个节点时 flex-1 仍会撑满整行（比多节点卡片更宽）。
         content = (
             <div className="nodes-hscroll flex items-start gap-4 overflow-x-auto pb-2">
                 {hosts.map((host) => (
-                    <div key={host.id} className="min-w-[300px] flex-1">
+                    <div key={host.id} className="min-w-[500px] flex-1">
                         <HostCard host={host}/>
                     </div>
                 ))}
