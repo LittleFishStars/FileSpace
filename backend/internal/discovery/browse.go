@@ -51,7 +51,8 @@ func browseLoop(ctx context.Context, service, domain string, cache *Cache, fetch
 func runBrowse(ctx context.Context, service, domain string, cache *Cache, fetchTimeout time.Duration) bool {
 	browCtx, cancel := context.WithTimeout(ctx, browseInterval)
 	defer cancel()
-	resolver, err := zeroconf.NewResolver(nil)
+	ifaces := listAllInterfaces()
+	resolver, err := zeroconf.NewResolver(zeroconf.SelectIfaces(ifaces))
 	if err != nil {
 		log.Printf("mDNS 解析器创建失败: %v", err)
 		return false
