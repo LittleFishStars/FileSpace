@@ -443,9 +443,7 @@ export default function LocalPanel() {
                                     size="small"
                                     icon={<EditOutlined/>}
                                     onClick={openNameEditor}
-                                >
-                                    修改主机名
-                                </Button>
+                                />
                             </Tooltip>
                         </span>
                     }
