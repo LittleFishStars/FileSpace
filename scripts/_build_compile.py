@@ -166,11 +166,11 @@ def go_build(platform, out_dir, binary, pkg):
 
 
 def build_backend(platform):
-    """交叉编译后端程序（filespace：API + 嵌入的前端静态资源）到 build/<平台>/。
+    """交叉编译后端程序（filespace：API + 嵌入的前端静态资源）到 build/<系统-架构>/。
 
     Windows 平台额外嵌入图标与版本信息资源（syso），构建后自动清理。
     """
-    out_dir = os.path.join(BUILD_DIR, platform.name)
+    out_dir = os.path.join(BUILD_DIR, platform.dir)
     os.makedirs(out_dir, exist_ok=True)
     syso = None
     if platform.goos == "windows":
@@ -192,15 +192,15 @@ def build_platforms(targets):
         p = PLATFORMS[name]
         print("\n[%s] %s" % (p.name, p.description))
         build_backend(p)
-        print("   ✅ %s" % os.path.join(BUILD_DIR, p.name, binary_name(p)))
+        print("   ✅ %s" % os.path.join(BUILD_DIR, p.dir, binary_name(p)))
 
     print("\n✅ 构建完成，产物目录：")
     for name in targets:
         p = PLATFORMS[name]
-        print("   build/%s/  （filespace 后端，含嵌入的前端静态资源）" % name)
+        print("   build/%s/  （filespace 后端，含嵌入的前端静态资源）" % p.dir)
     print("\n运行：")
     for name in targets:
         p = PLATFORMS[name]
-        exe = os.path.join(BUILD_DIR, p.name, binary_name(p))
+        exe = os.path.join(BUILD_DIR, p.dir, binary_name(p))
         print("   %s            # 只启动后端 API" % exe)
         print("   %s --web      # 启动后端 + 前端界面，并在浏览器中打开" % exe)

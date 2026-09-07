@@ -19,6 +19,7 @@ import type {ColumnsType} from 'antd/es/table';
 import {
     CloudServerOutlined,
     DeleteOutlined,
+    EditOutlined,
     FolderAddOutlined,
     FolderOpenOutlined,
     KeyOutlined,
@@ -38,6 +39,7 @@ import {
     pickDirectory,
     removeFolder,
     setFolderPassword,
+    setHostname,
     type ApiFolderInfo,
 } from '../_lib/api';
 
@@ -54,7 +56,7 @@ export default function LocalPanel() {
     // 点击文件夹行直接进入浏览页（与局域网节点文件夹卡片点击打开的行为一致）
     const router = useRouter();
     // 本机节点信息由 AccessProvider 统一提供（含访问来源 local 标记）
-    const {node, status: nodeStatus} = useAccess();
+    const {node, status: nodeStatus, refresh: refreshNodeInfo} = useAccess();
     const [folders, setFolders] = useState<ApiFolderInfo[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +79,10 @@ export default function LocalPanel() {
     const [pwRemoving, setPwRemoving] = useState<string | null>(null);
     // 数据刷新计数：添加 / 删除 / 密码操作成功后 +1 触发重新加载
     const [refresh, setRefresh] = useState(0);
+    // 修改节点名称弹窗状态
+    const [nameOpen, setNameOpen] = useState(false);
+    const [nameText, setNameText] = useState('');
+    const [nameSubmitting, setNameSubmitting] = useState(false);
 
     useEffect(() => {
         // 节点信息未就绪（加载中 / 拉取失败）时保持加载态，由 AccessProvider 状态兜底
@@ -250,6 +256,35 @@ export default function LocalPanel() {
         setPwEditText('');
     };
 
+    /** 打开「修改主机名」弹窗：输入框回显当前名称（未自定义时回显系统主机名，
+     *  修改后即转为自定义名称）；清空输入可恢复系统主机名 */
+    const openNameEditor = () => {
+        if (!node) return;
+        setNameText(node.hostname);
+        setNameOpen(true);
+    };
+
+    /** 提交主机名修改：为空表示恢复系统主机名；成功后刷新全局节点信息（各页面同步） */
+    const handleSaveHostname = async () => {
+        setNameSubmitting(true);
+        try {
+            const name = nameText.trim();
+            await setHostname(name);
+            if (name) {
+                message.success(`已修改本机节点名称为「${name}」`);
+            } else {
+                message.success('已恢复使用系统主机名');
+            }
+            setNameOpen(false);
+            refreshNodeInfo(); // 重拉 /api/node：本机卡片、顶栏/面包屑等全局展示同步新名称
+            setRefresh((x) => x + 1); // 共享列表数据常规刷新（名称不在其中，保持流程一致）
+        } catch (e) {
+            message.error(errMsg(e, '修改失败'));
+        } finally {
+            setNameSubmitting(false);
+        }
+    };
+
     const columns: ColumnsType<ApiFolderInfo> = [
         {
             title: '名称',
@@ -401,7 +436,15 @@ export default function LocalPanel() {
                     title={
                         <span className="flex items-center gap-2 text-base font-semibold">
                             <CloudServerOutlined className="text-neutral-500 dark:text-neutral-400"/>
-                            {node.hostname}
+                            <span className="max-w-56 truncate" title={node.hostname}>{node.hostname}</span>
+                            <Tooltip title="修改本机在局域网中显示的名称（其他节点列表里看到的名字）">
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<EditOutlined/>}
+                                    onClick={openNameEditor}
+                                />
+                            </Tooltip>
                         </span>
                     }
                     extra={
@@ -595,6 +638,36 @@ export default function LocalPanel() {
                     onChange={(e) => setPwEditText(e.target.value)}
                     placeholder="访问密码"
                     autoFocus
+                />
+            </Modal>
+
+            {/* 修改主机名弹窗：清空输入表示恢复系统主机名（与 --hostname '' 语义一致） */}
+            <Modal
+                open={nameOpen}
+                title="修改主机名"
+                okText="保存"
+                cancelText="取消"
+                confirmLoading={nameSubmitting}
+                onOk={handleSaveHostname}
+                onCancel={() => {
+                    setNameOpen(false);
+                    setNameText('');
+                }}
+            >
+                <div className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+                    设置本机在局域网中显示的名称（其他节点列表里看到的名字）。留空保存可恢复使用系统主机名。
+                    <br/>
+                    修改后立即生效：本页面与局域网其他节点的列表会同步刷新，并写回配置文件（重启后仍保留）。
+                </div>
+                <Input
+                    value={nameText}
+                    onChange={(e) => setNameText(e.target.value)}
+                    onPressEnter={handleSaveHostname}
+                    placeholder="输入节点名称（留空恢复系统主机名）"
+                    maxLength={64}
+                    count={{show: true, max: 64}}
+                    autoFocus
+                    allowClear
                 />
             </Modal>
         </>

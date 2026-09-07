@@ -29,10 +29,15 @@ APP_BINARY = "filespace"
 class Platform:
     """一个目标平台的交叉编译参数。"""
 
-    name: str         # 命令行参数名（同时作为产物目录名）
+    name: str         # 命令行参数名（make build-<name> / build.py <name>）
     goos: str         # GOOS
     goarch: str       # GOARCH
     description: str  # 平台说明（提示用）
+
+    @property
+    def dir(self) -> str:
+        """产物目录名：统一为「系统-架构」（如 linux-amd64 / windows-amd64 / darwin-arm64）。"""
+        return "%s-%s" % (self.goos, self.goarch)
 
 
 PLATFORMS = {

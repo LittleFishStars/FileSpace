@@ -62,43 +62,52 @@ export default function NodeInfoCard({
     { icon: <ClockCircleOutlined />, label: '运行时间', value: info.uptime },
   ]
 
-  // 不折叠：直接平铺，大屏一行四个、中屏两行两个、小屏四行一个
+  // 容器查询：列数基于「卡片实际宽度」而非视口宽度，
+  // 节点卡片横向收缩后按自身宽度合理分行
+  // （<384px 一列，384~672px 两列，≥672px 四列）。
+  const gridCls = 'grid grid-cols-1 gap-2 @sm:grid-cols-2 @2xl:grid-cols-4'
+
+  // 不折叠：直接平铺，外层 @container 作为容器查询的包含块
   if (!collapsible) {
     return (
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {infoItems.map((item) => (
-          <InfoItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
-        ))}
+      <div className="@container">
+        <div className={gridCls}>
+          {infoItems.map((item) => (
+            <InfoItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <Collapse
-      className="mb-4"
-      ghost
-      defaultActiveKey={[]}
-      items={[
-        {
-          key: 'node-info',
-          label: (
-            <span className="flex items-center gap-2 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-              <ClusterOutlined className="text-neutral-500 dark:text-neutral-400" />
-              节点信息
-              <span className="text-xs font-normal text-neutral-500 dark:text-neutral-400">
-                {infoItems.length} 项
+    <div className="@container">
+      <Collapse
+        className="mb-4"
+        ghost
+        defaultActiveKey={[]}
+        items={[
+          {
+            key: 'node-info',
+            label: (
+              <span className="flex items-center gap-2 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                <ClusterOutlined className="text-neutral-500 dark:text-neutral-400" />
+                节点信息
+                <span className="text-xs font-normal text-neutral-500 dark:text-neutral-400">
+                  {infoItems.length} 项
+                </span>
               </span>
-            </span>
-          ),
-          children: (
-            <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2 xl:grid-cols-4">
-              {infoItems.map((item) => (
-                <InfoItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
-              ))}
-            </div>
-          ),
-        },
-      ]}
-    />
+            ),
+            children: (
+              <div className={`${gridCls} pt-1`}>
+                {infoItems.map((item) => (
+                  <InfoItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
+                ))}
+              </div>
+            ),
+          },
+        ]}
+      />
+    </div>
   )
 }

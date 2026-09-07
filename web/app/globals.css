@@ -35,3 +35,19 @@ body {
 .ant-pro-top-nav-header .ant-pro-top-nav-header-logo {
   margin-inline-end: 40px;
 }
+
+/* 局域网节点横向滚动条：细条、圆角，明暗主题下均半透明贴合背景 */
+.nodes-hscroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 140, 140, 0.55) transparent;
+}
+.nodes-hscroll::-webkit-scrollbar {
+  height: 8px;
+}
+.nodes-hscroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: rgba(140, 140, 140, 0.55);
+}
+.nodes-hscroll::-webkit-scrollbar-track {
+  background: transparent;
+}

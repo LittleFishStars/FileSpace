@@ -6,11 +6,12 @@
 # 指定平台：  make build-linux / build-linux-aarch64 / build-windows / build-darwin / build-darwin-amd64
 # 清理：      make clean
 #
-# 构建逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/ 下：
-#   build/<平台>/               后端（filespace，含嵌入的前端静态资源）
+# 构建逻辑统一由 scripts/build.py（Python）实现，产物输出到 build/ 下，
+# 按「系统-架构」分目录（如 linux-amd64 / windows-amd64 / darwin-arm64）：
+#   build/<系统-架构>/         后端（filespace，含嵌入的前端静态资源）
 # 运行：
-#   build/<平台>/filespace            # 只启动后端 API
-#   build/<平台>/filespace --web      # 启动后端 + 前端界面，并在浏览器中打开
+#   build/<系统-架构>/filespace      # 只启动后端 API
+#   build/<系统-架构>/filespace --web   # 启动后端 + 前端界面，并在浏览器中打开
 
 .PHONY: dev dev-web dev-backend build build-linux build-linux-aarch64 build-windows build-darwin build-darwin-amd64 clean
 

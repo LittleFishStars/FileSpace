@@ -53,8 +53,8 @@
 │   │   ├── share/        # 共享目录：注册表(manager) / 密码(password) / 统计缓存(stats) / 扫描(tree) / 监听(watcher)
 │   │   └── state/        # 本地运行锁
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.4.3-2609070011）
-└── build/                # 构建产物（gitignored）：build/<平台>/（后端，含嵌入的前端静态资源）
+│   └── version.go        # 版本号（当前 0.5.0-2609071343）
+└── build/                # 构建产物（gitignored）：build/<系统-架构>/（后端，含嵌入的前端静态资源）
 ```
 
 ## 💻 支持平台
@@ -100,13 +100,13 @@ python3 scripts/build.py --clean      # 清理构建产物
 
 ```bash
 # 读取/创建默认配置并按配置共享（不共享任何文件夹时后端仅提供 API）
-./build/linux/filespace
+./build/linux-amd64/filespace
 
 # 额外共享指定目录
-./build/linux/filespace -d ~/docs
+./build/linux-amd64/filespace -d ~/docs
 
 # 启动后端 + 前端界面，并在浏览器中打开
-./build/linux/filespace --web -d ~/docs
+./build/linux-amd64/filespace --web -d ~/docs
 ```
 
 ## 🧩 工作原理
