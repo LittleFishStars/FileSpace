@@ -64,6 +64,87 @@ func TestProgressFormatting(t *testing.T) {
 	}
 }
 
+// TestProgressListing 验证「获取文件列表」阶段：beginListing 立即渲染首行，
+// scanAdd 累计已发现字节并按总大小显示百分比（无文件数量）；endListing
+// 先渲染最终列表结果再切换到下载模式。
+func TestProgressListing(t *testing.T) {
+	var buf bytes.Buffer
+	p := newTestProgress(&buf)
+	p.total = 1024 * 1024 // 文件夹总大小 1 MB
+	p.beginListing()
+	first := buf.String()
+	if !strings.HasPrefix(first, "\r同步 ") || !strings.Contains(first, "获取文件列表") {
+		t.Errorf("beginListing 应立即渲染首行: %q", first)
+	}
+	if !strings.Contains(first, "0 B / 1.0 MB") || !strings.Contains(first, "0%") {
+		t.Errorf("beginListing 应显示 0 B / 总大小（0%%）: %q", first)
+	}
+	if strings.Contains(first, "个文件") {
+		t.Errorf("获取文件列表行不应显示文件数量: %q", first)
+	}
+
+	// 发现 256 KB 的文件
+	buf.Reset()
+	expireThrottle(p)
+	p.scanAdd(256 * 1024)
+	mid := buf.String()
+	if !strings.Contains(mid, "256.0 KB / 1.0 MB") || !strings.Contains(mid, "25%") {
+		t.Errorf("scanAdd 后应按总大小显示百分比: %q", mid)
+	}
+
+	// endListing 先强制渲染最终结果（覆盖节流落下的最后一段），再离开列表模式
+	buf.Reset()
+	p.scanAdd(768 * 1024) // 累计 1 MB = 100%
+	buf.Reset()
+	p.endListing()
+	end := buf.String()
+	if !strings.Contains(end, "1.0 MB / 1.0 MB") || !strings.Contains(end, "100%") {
+		t.Errorf("endListing 应强制渲染最终列表结果: %q", end)
+	}
+	if p.listing {
+		t.Error("endListing 后应退出列表模式")
+	}
+}
+
+// TestProgressListingNoTotal 验证文件夹总大小尚未统计到（total<=0）时，
+// 获取文件列表阶段只显示已发现字节、不显示百分比（避免除以 0）。
+func TestProgressListingNoTotal(t *testing.T) {
+	var buf bytes.Buffer
+	p := newTestProgress(&buf)
+	p.beginListing()
+	buf.Reset()
+	expireThrottle(p)
+	p.scanAdd(512)
+	line := buf.String()
+	if !strings.Contains(line, "获取文件列表") || !strings.Contains(line, "512 B") {
+		t.Errorf("total 不可用时应显示已发现字节: %q", line)
+	}
+	if strings.Contains(line, "%") {
+		t.Errorf("total 不可用时不显示百分比: %q", line)
+	}
+}
+
+// TestProgressListingThrottle 验证列表阶段的节流：连续快速 scanAdd 不会每次写
+// 终端；endListing 强制渲染最终结果（与下载阶段的节流语义一致）。
+func TestProgressListingThrottle(t *testing.T) {
+	var buf bytes.Buffer
+	p := newTestProgress(&buf)
+	p.total = 9990
+	p.beginListing()
+	buf.Reset()
+	for i := 0; i < 999; i++ {
+		p.scanAdd(10)
+	}
+	if got := countCR(buf.String()); got > 4 {
+		t.Errorf("999 次快速 scanAdd 的刷新次数应被节流（<=4），实际 %d 次", got)
+	}
+	buf.Reset()
+	p.endListing()
+	if !strings.Contains(buf.String(), "9.8 KB / 9.8 KB") || !strings.Contains(buf.String(), "100%") {
+		t.Errorf("endListing 应强制渲染最终列表结果: %q", buf.String())
+	}
+}
+
 // TestProgressNonTTYSilent 验证非 TTY（管道/重定向，如写入 bytes.Buffer 或普通文件）
 // 时进度条完全静默：newProgress 返回 enabled=false，render/add/finish 不产生任何输出。
 func TestProgressNonTTYSilent(t *testing.T) {

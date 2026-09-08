@@ -58,21 +58,27 @@ func (t *Task) reconcileOnce(ctx context.Context, c *remoteClient) error {
 		}
 	}
 
-	// 3. 深度收集远端条目
-	remote, err := collectRemote(ctx, c, "")
+	// 3. 深度收集远端条目。进度条从这一步开始显示：从远端逐层拉取文件清单
+	// 是下载的前提（TotalSize 只是总大小，给不了文件清单），对 .git/objects
+	// 这类深层目录会耗时较久，必须一开始就有「获取文件列表」的大小百分比反馈，
+	// 而不是干等到下载阶段才有动静。
+	prog := newProgress(os.Stdout, t.Remote())
+	prog.total = folder.TotalSize // 分母：目标文件夹总大小（stats 后台扫描）
+	prog.beginListing()
+	remote, err := collectRemote(ctx, c, "", prog)
 	if err != nil {
+		prog.finish()
 		return err
 	}
+	prog.endListing()
 
 	// 4. 确保本地同步目录存在
 	if err := os.MkdirAll(t.spec.Local, 0o755); err != nil {
 		return fmt.Errorf("创建本地同步目录失败: %w", err)
 	}
 
-	// 对账：先处理远端条目（建目录/下载/类型重建），再清理本地多余条目。
-	// 进度条分母用目标文件夹总大小（远端 stats 后台扫描的 TotalSize，首次全量
-	// 下载时即与文件夹总大小一致，百分比直接可用）。
-	toDelete := t.reconcilePulls(ctx, c, remote, folder.TotalSize)
+	// 对账：先处理远端条目（建目录/下载/类型重建），再清理本地多余条目
+	toDelete := t.reconcilePulls(ctx, c, remote, prog)
 	if toDelete != nil {
 		t.removeExtras(remote, toDelete)
 	}
@@ -80,7 +86,8 @@ func (t *Task) reconcileOnce(ctx context.Context, c *remoteClient) error {
 }
 
 // collectRemote 深度遍历远端目录树，返回全部条目（逐层调用 tree 懒加载）。
-func collectRemote(ctx context.Context, c *remoteClient, dir string) ([]remoteEntry, error) {
+// prog 非空时每发现一个文件即上报字节（目录无大小不计入），刷新列表进度。
+func collectRemote(ctx context.Context, c *remoteClient, dir string, prog *progress) ([]remoteEntry, error) {
 	entries, err := c.tree(ctx, dir)
 	if err != nil {
 		return nil, err
@@ -89,7 +96,7 @@ func collectRemote(ctx context.Context, c *remoteClient, dir string) ([]remoteEn
 	for _, e := range entries {
 		rel := e.Path
 		if e.IsDir {
-			children, err := collectRemote(ctx, c, rel)
+			children, err := collectRemote(ctx, c, rel, prog)
 			if err != nil {
 				return nil, err
 			}
@@ -97,6 +104,9 @@ func collectRemote(ctx context.Context, c *remoteClient, dir string) ([]remoteEn
 			out = append(out, children...)
 		} else {
 			out = append(out, remoteEntry{rel: rel, size: e.Size, modTime: e.ModTime})
+			if prog != nil {
+				prog.scanAdd(e.Size)
+			}
 		}
 	}
 	return out, nil
@@ -104,10 +114,10 @@ func collectRemote(ctx context.Context, c *remoteClient, dir string) ([]remoteEn
 
 // reconcilePulls 逐远端条目对账到本地（增量下载/类型冲突重建），
 // 返回本地需要清理的多余条目（rel → 是否为目录；目录以 "/" 结尾）。
-// 分两阶段执行：先规划（处理目录结构、判定待下载文件），再下载并刷新终端进度条
-// （分母取目标文件夹总大小 folderTotalSize；不可用（<=0，如远端尚未扫描完）时
-// 回退为本轮待下载字节和，保证百分比仍反映下载进度）。
-func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []remoteEntry, folderTotalSize int64) map[string]bool {
+// 分两阶段执行：先规划（处理目录结构、判定待下载文件），再下载并刷新终端
+// 进度条（分母在扫描阶段已设为文件夹总大小；不可用（<=0，如远端尚未统计完）
+// 时回退为本轮待下载字节和，保证百分比仍反映下载进度）。
+func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []remoteEntry, prog *progress) map[string]bool {
 	// 待下载列表：rel（远端相对路径）+ 本地绝对路径 + 大小 + 远端修改时间。
 	type pullTask struct {
 		rel   string
@@ -152,13 +162,12 @@ func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []rem
 		pendingBytes += re.size
 	}
 
-	// 阶段二：执行下载 + 终端进度条。无待下载（纯增量命中）时跳过，不留进度条痕迹。
+	// 阶段二：执行下载。无待下载（纯增量命中）时只清掉「获取文件列表」的进度行，
+	// 本地冗余清理（collectExtras）随之进行。
 	if len(pending) > 0 {
-		prog := newProgress(os.Stdout, t.Remote())
 		prog.count = len(pending)
-		prog.total = folderTotalSize
 		if prog.total <= 0 {
-			prog.total = pendingBytes // 远端文件夹大小不可用：回退为本轮待下载量
+			prog.total = pendingBytes // 文件夹总大小不可用：回退为本轮待下载量
 		}
 		for _, p := range pending {
 			if err := c.download(ctx, p.rel, p.local); err != nil {
@@ -175,6 +184,9 @@ func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []rem
 		// 本轮汇总（非 TTY 也会打印，方便重定向到文件时观察进度结果）
 		fmt.Printf("✅ 同步 %s 完成：本轮下载 %s，文件夹总大小 %s\n",
 			t.Remote(), formatBytes(prog.done), formatBytes(prog.total))
+	} else {
+		// 本轮无待下载：清掉「获取文件列表」的进度行
+		prog.finish()
 	}
 	return t.collectExtras(remote)
 }

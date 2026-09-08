@@ -8,10 +8,13 @@ import (
 	"time"
 )
 
-// 终端进度条：同步任务逐文件下载时，用 \r 覆盖单行显示
-// 「已下载字节 / 总字节（百分比） 速度 剩余时间」。
-// 总字节取目标文件夹的总大小（远端 stats 后台扫描的 FolderInfo.TotalSize，
-// 首次下载时即与文件夹总大小一致，百分比直接可用；不可用时回退为本轮待下载量）。
+// 终端进度条：在同步任务运行时用 \r 覆盖单行显示进度，覆盖两个阶段——
+//   - 获取文件列表（collectRemote 逐层拉取远端目录树，需先知道远端有哪些文件
+//     才能下载，无法跳过）：显示「获取文件列表 已发现 / 总大小（%）」；
+//   - 下载阶段（逐文件下载）：显示「下载 已下载 / 总大小（%） 速度 剩余时间」。
+//
+// 两个阶段都是纯大小百分比、不显示文件数量；分母取目标文件夹总大小
+// （远端 stats 后台扫描的 FolderInfo.TotalSize），不可用时回退。
 // 仅当 stdout 是真实终端（TTY）时渲染；管道/重定向（如重定向到日志文件）时静默，
 // 避免把 \r 控制字符写进日志。多个同步任务并发时用包级互斥串行化刷新，
 // 防止各任务进度行互相打断。
@@ -20,28 +23,33 @@ import (
 // 在锁内完成，行内容不会被交错（视觉上本次显示哪个任务由最后一次刷新决定）。
 var progressMu sync.Mutex
 
-// renderInterval 两次实际刷新（写终端）的最小间隔：文件多时逐条刷新会刷屏并
-// 争用输出锁拖慢下载，按此间隔节流；最终态强制刷新。
+// renderInterval 两次实际刷新（写终端）的最小间隔：获取列表时条目数可达
+// 数万，逐条刷新会刷屏并争用输出锁拖慢对账，按此间隔节流；最终态强制刷新。
 const renderInterval = 120 * time.Millisecond
 
-// progress 一个同步任务当前下载阶段的进度状态。
+// progress 一个同步任务当前阶段的进度状态。
 type progress struct {
 	enabled  bool // 非 TTY 时为 false，render/finish 均为空操作
 	rendered bool // 是否真正输出过进度行（finish 仅需清理渲染过的行）
 	w        io.Writer
 	id       string // 远程定位 + 文件夹 id（如 192.168.1.5:8080:abcd1234）
 
+	// 获取文件列表阶段
+	listing     bool  // 是否处于「获取文件列表」阶段
+	listedBytes int64 // 已从远端清单中发现的文件字节和
+
+	// 下载阶段
 	total int64 // 进度分母：目标文件夹总大小（字节）
 	count int   // 本轮待下载文件数（内部用于判定是否全部处理完，不参与显示）
 	done  int64 // 进度分子：已下载字节
 	doneN int   // 已下载文件数（内部计数）
 
-	start      time.Time // 下载开始时间（速度用）
+	start      time.Time // 阶段开始时间（速度用）
 	lastRender time.Time // 上次实际写终端的时刻（节流用）
 }
 
 // newProgress 创建进度条。stdout 非终端时返回 enabled=false 的空进度条（调用方
-// 无需区分，add/render/finish 均安全）。
+// 无需区分，scanAdd/add/render/finish 均安全）。
 func newProgress(w io.Writer, id string) *progress {
 	return &progress{
 		enabled: isTTY(w),
@@ -62,6 +70,28 @@ func isTTY(w io.Writer) bool {
 		return false
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// beginListing 进入「获取文件列表」阶段（collectRemote 前调用），立即渲染
+// 首行进度，让用户点完同步马上看到反馈（大文件夹遍历耗时较长，不能干等）。
+func (p *progress) beginListing() {
+	p.listing = true
+	p.start = time.Now()
+	p.render()
+}
+
+// scanAdd 记录从远端清单中发现的字节（目录无大小不计入）。
+// 按 renderInterval 节流，避免大目录数万条目逐条刷新刷屏。
+func (p *progress) scanAdd(size int64) {
+	p.listedBytes += size
+	p.maybeRender()
+}
+
+// endListing 结束「获取文件列表」阶段（collectRemote 完成后调用）：先强制渲染
+// 最终列表结果（覆盖节流可能落下的最后一段），再切换到下载/空闲模式。
+func (p *progress) endListing() {
+	p.render()
+	p.listing = false
 }
 
 // add 累加一条下载完成（bytes 为该文件实际下载字节数），并刷新进度行。
@@ -89,32 +119,46 @@ func (p *progress) maybeRender() {
 
 // render 刷新单行进度。格式：
 //
-//	同步 <id>：下载 4.2 MB / 15.0 MB（25%） 2.3 MB/s 剩余 1m20s
+//	获取列表：  同步 <id>：获取文件列表 3.0 MB / 15.0 MB（20%）
+//	下载：      同步 <id>：下载 4.2 MB / 15.0 MB（25%） 2.3 MB/s 剩余 1m20s
 //
 // 用空格补齐行尾，避免上次更长的内容残留。
 func (p *progress) render() {
 	if !p.enabled {
 		return
 	}
-	if p.total == 0 {
+	if !p.listing && p.total == 0 {
 		return
 	}
-	elapsed := time.Since(p.start).Seconds()
-	var speed, eta string
-	if elapsed > 0 && p.done > 0 {
-		rate := float64(p.done) / elapsed
-		speed = fmt.Sprintf(" %.1f MB/s", rate/(1024*1024))
-		if p.done < p.total {
-			remain := float64(p.total-p.done) / rate
-			eta = fmt.Sprintf(" 剩余 %s", humanDuration(time.Duration(remain*float64(time.Second))))
+	var line string
+	if p.listing {
+		if p.total > 0 {
+			line = fmt.Sprintf("\r同步 %s：获取文件列表 %s / %s（%d%%）",
+				p.id, formatBytes(p.listedBytes), formatBytes(p.total),
+				int(p.listedBytes*100/p.total))
+		} else {
+			// 总大小尚未统计到：只显示已发现字节
+			line = fmt.Sprintf("\r同步 %s：获取文件列表… 已发现 %s",
+				p.id, formatBytes(p.listedBytes))
 		}
+	} else {
+		elapsed := time.Since(p.start).Seconds()
+		var speed, eta string
+		if elapsed > 0 && p.done > 0 {
+			rate := float64(p.done) / elapsed
+			speed = fmt.Sprintf(" %.1f MB/s", rate/(1024*1024))
+			if p.done < p.total {
+				remain := float64(p.total-p.done) / rate
+				eta = fmt.Sprintf(" 剩余 %s", humanDuration(time.Duration(remain*float64(time.Second))))
+			}
+		}
+		line = fmt.Sprintf("\r同步 %s：下载 %s / %s（%d%%）%s%s",
+			p.id,
+			formatBytes(p.done), formatBytes(p.total),
+			int(p.done*100/p.total),
+			speed, eta,
+		)
 	}
-	line := fmt.Sprintf("\r同步 %s：下载 %s / %s（%d%%）%s%s",
-		p.id,
-		formatBytes(p.done), formatBytes(p.total),
-		int(p.done*100/p.total),
-		speed, eta,
-	)
 	// 预留行宽：补齐到 80 列，覆盖上一次更长内容
 	if len(line) < 80 {
 		line += spaces(80 - len(line))
