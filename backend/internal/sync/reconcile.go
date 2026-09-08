@@ -49,9 +49,13 @@ func (t *Task) reconcileOnce(ctx context.Context, c *remoteClient) error {
 	if folder == nil {
 		return fmt.Errorf("%w: 远程节点上找不到文件夹 id %s（可能已被移除或 id 有误）", errFolderMissing, t.spec.FolderID)
 	}
-	// 2. 认证（需要密码时换令牌；远端无密码文件夹时直接访问）
-	if err := c.authenticate(ctx); err != nil {
-		return err
+	// 2. 认证：仅当目标文件夹设置了访问密码时才需要用 Passwd 换令牌
+	//（开放文件夹直接访问；不按节点整体判断——节点上其他密码文件夹的存在
+	// 不应阻塞对开放文件夹的同步，见 /api/auth 的节点级校验语义）。
+	if folder.Auth {
+		if err := c.authenticate(ctx); err != nil {
+			return err
+		}
 	}
 
 	// 3. 深度收集远端条目

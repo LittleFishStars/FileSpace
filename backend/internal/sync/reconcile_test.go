@@ -26,20 +26,29 @@ func folderIDFor(path string) string {
 //   - /api/folders 固定返回一个共享文件夹（id = folderIDFor("share")）；
 //   - /api/folders/{id}/tree?path=... 从 remoteRoot 返回目录条目（懒加载）；
 //   - /api/folders/{id}/download?path=... 返回文件内容（记录调用次数）；
-//   - password 非空时需先经 /api/auth 换令牌（正确密码为 "secret"）。
+//   - password 非空时提供 /api/auth（正确密码为 "secret"）——模拟「节点上存在需要
+//     密码的文件夹」；目标文件夹自身的访问要求由 folderAuth 独立控制（可与节点
+//     密码解耦，用于验证「节点有密码但目标文件夹开放」的同步场景）。
 type fakeRemote struct {
 	srv          *httptest.Server
 	spec         Spec
 	remoteRoot   string
 	password     string
+	folderAuth   bool
 	downloadCall int
 }
 
-// newFakeRemote 创建模拟远端。
+// newFakeRemote 创建模拟远端（目标文件夹是否设密码与节点是否有密码一致）。
 func newFakeRemote(remoteRoot, password string) *fakeRemote {
+	return newFakeRemoteAuth(remoteRoot, password, password != "")
+}
+
+// newFakeRemoteAuth 创建模拟远端，节点密码与目标文件夹 auth 解耦设置。
+func newFakeRemoteAuth(remoteRoot, password string, folderAuth bool) *fakeRemote {
 	fr := &fakeRemote{
 		remoteRoot: remoteRoot,
 		password:   password,
+		folderAuth: folderAuth,
 		spec:       Spec{Host: "127.0.0.1", FolderID: folderIDFor("share")},
 	}
 	mux := http.NewServeMux()
@@ -58,7 +67,7 @@ func newFakeRemote(remoteRoot, password string) *fakeRemote {
 
 	mux.HandleFunc("/api/folders", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{"id": fr.spec.FolderID, "name": "share", "auth": password != ""},
+			{"id": fr.spec.FolderID, "name": "share", "auth": fr.folderAuth},
 		})
 	})
 
@@ -252,6 +261,29 @@ func TestReconcileAuth(t *testing.T) {
 	}
 	if got := readLocal(t, filepath.Join(spec.Local, "secret.txt")); got != "top secret" {
 		t.Errorf("secret.txt = %q，期望 top secret", got)
+	}
+}
+
+// TestReconcileOpenFolderUnauthed 验证开放文件夹在「节点上存在其他密码文件夹」时
+// 仍能直接同步：认证判定按目标文件夹自身是否设密码（folder.Auth），而非节点整体。
+// 回归：曾无条件调用 /api/auth（节点级校验），节点上有密码文件夹时开放文件夹
+// 用空密码认证被拒（HTTP 401 密码可能错误），同步不断重试。
+func TestReconcileOpenFolderUnauthed(t *testing.T) {
+	remoteRoot := t.TempDir()
+	writeTestFile(t, filepath.Join(remoteRoot, "open.txt"), "open content", "")
+
+	// 节点有密码文件夹（password="on" 提供 /api/auth），但目标文件夹开放（folderAuth=false）
+	fr := newFakeRemoteAuth(remoteRoot, "on", false)
+	defer fr.Close()
+	spec := fr.spec
+	spec.Local = filepath.Join(t.TempDir(), "mirror")
+
+	task := &Task{spec: spec}
+	if err := task.reconcileOnce(context.Background(), newRemoteClient(spec)); err != nil {
+		t.Fatalf("开放文件夹不应因节点存在密码文件夹而认证失败: %v", err)
+	}
+	if got := readLocal(t, filepath.Join(spec.Local, "open.txt")); got != "open content" {
+		t.Errorf("open.txt = %q，期望 open content", got)
 	}
 }
 
