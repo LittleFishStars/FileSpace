@@ -33,6 +33,7 @@ import NodeInfoCard from '../_cards/node_info_card';
 import {useAccess} from './access_context';
 import {errMsg} from '../_lib/errors';
 import {formatSize, formatTime} from '../_lib/format';
+import {copyText} from '../_lib/clipboard';
 import {
     addFolders,
     fetchFolders,
@@ -285,6 +286,18 @@ export default function LocalPanel() {
         }
     };
 
+    /** 点击复制文件夹 ID（用于 -s/--sync 等需要手动指定文件夹 id 的场景）。
+     *  表格行点击会进入浏览页，故阻止冒泡避免误跳转 */
+    const handleCopyId = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        const ok = await copyText(id);
+        if (ok) {
+            message.success(`已复制文件夹 ID：${id}`);
+        } else {
+            message.error('复制失败，请手动选择复制');
+        }
+    };
+
     const columns: ColumnsType<ApiFolderInfo> = [
         {
             title: '名称',
@@ -297,9 +310,14 @@ export default function LocalPanel() {
                     <span className="font-medium transition-colors duration-150 group-hover:text-blue-600 dark:group-hover:text-blue-400">
                         {record.name}
                     </span>
-                    <span className="text-xs font-normal text-neutral-400 dark:text-neutral-500">
-                        {record.id}
-                    </span>
+                    <Tooltip title="点击复制文件夹 ID">
+                        <span
+                            className="cursor-pointer rounded px-1 text-xs font-normal text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                            onClick={(e) => handleCopyId(e, record.id)}
+                        >
+                            {record.id}
+                        </span>
+                    </Tooltip>
                     {record.auth && (
                         <Tooltip title="该文件夹设置了访问密码，其他节点需输入密码才能访问">
                             <LockOutlined className="text-amber-500 dark:text-amber-400"/>

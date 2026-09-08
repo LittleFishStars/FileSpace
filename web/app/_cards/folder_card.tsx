@@ -2,8 +2,9 @@
 
 import { FolderOutlined, LockOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
-import { Tooltip } from 'antd'
+import { App as AntdApp, Tooltip } from 'antd'
 import { formatSize, formatTime } from '../_lib/format'
+import { copyText } from '../_lib/clipboard'
 import type { ApiFolderInfo } from '../_lib/api'
 
 /**
@@ -23,6 +24,20 @@ export default function FolderCard({
     { label: '文件', value: String(folder.fileCount) },
     { label: '总大小', value: formatSize(folder.totalSize) },
   ]
+  const { message } = AntdApp.useApp()
+
+  /** 点击复制文件夹 ID（用于 -s/--sync 等需要手动指定文件夹 id 的场景）。
+   *  卡片整体被 Link 包裹（host_card 点击进入浏览页），故阻止冒泡与默认跳转 */
+  const handleCopyId = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const ok = await copyText(folder.id)
+    if (ok) {
+      message.success(`已复制文件夹 ID：${folder.id}`)
+    } else {
+      message.error('复制失败，请手动选择复制')
+    }
+  }
 
   return (
     <ProCard
@@ -41,9 +56,14 @@ export default function FolderCard({
             <span className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-100">
               {folder.name}
             </span>
-            <span className="shrink-0 text-xs font-normal text-neutral-400 dark:text-neutral-500">
-              {folder.id}
-            </span>
+            <Tooltip title="点击复制文件夹 ID">
+              <span
+                className="shrink-0 cursor-pointer rounded px-1 text-xs font-normal text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                onClick={handleCopyId}
+              >
+                {folder.id}
+              </span>
+            </Tooltip>
             {folder.auth && (
               <Tooltip title="该文件夹设置了访问密码，需输入密码才能访问">
                 <LockOutlined className="shrink-0 text-sm text-amber-500 dark:text-amber-400" />
