@@ -11,6 +11,7 @@ import (
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
+	"filespace/internal/sync"
 )
 
 // Options 构建 Server 所需的依赖。
@@ -31,6 +32,9 @@ type Options struct {
 	// OnHostname 节点名称变更（本机管理页修改主机名）后的回调：外层据此
 	// 同步 mDNS 宣告并写回配置文件。可为 nil；为 nil 时仅本次运行内存生效。
 	OnHostname func(hostname string)
+	// Syncs 后台同步任务管理器（-s/--sync 创建；本机已有后端运行时经
+	// POST /api/sync/add 交接给它）。可为 nil；为 nil 时该端点返回 404。
+	Syncs *sync.Manager
 }
 
 // Server HTTP API 服务。
@@ -45,6 +49,7 @@ type Server struct {
 	persistFn  func()       // 共享列表变更后的持久化回调
 	hostnameFn func(string) // 节点名称变更后的回调（mDNS + 配置持久化）
 	auth       *auth.Tokens // 访问令牌管理（文件夹级密码认证）
+	syncs      *sync.Manager
 }
 
 // NewServer 创建 API 服务。
@@ -60,6 +65,7 @@ func NewServer(opts Options) *Server {
 		persistFn:  opts.Persist,
 		hostnameFn: opts.OnHostname,
 		auth:       auth.NewTokens(),
+		syncs:      opts.Syncs,
 	}
 }
 
@@ -81,6 +87,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/folders/remove", s.handleRemoveFolder)
 	mux.HandleFunc("POST /api/folders/password", s.handleSetFolderPassword)
 	mux.HandleFunc("POST /api/local/pick-directory", s.handlePickDirectory)
+	mux.HandleFunc("POST /api/sync/add", s.handleSyncAdd)
 	mux.HandleFunc("GET /api/folders/{id}/tree", s.handleTree)
 	mux.HandleFunc("GET /api/folders/{id}/download", s.handleDownload)
 	mux.HandleFunc("POST /api/folders/{id}/open", s.handleOpenFile)

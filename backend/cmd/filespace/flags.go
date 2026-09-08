@@ -9,6 +9,8 @@ import (
 type options struct {
 	configPath string // -c/--config：配置文件路径（默认用户配置目录下的 config.yaml；无 $HOME/$XDG_CONFIG_HOME 时为程序所在目录）
 	dirs       []string
+	syncSpecs  []string // -s/--sync：远程同步定位符列表（<ip>:<文件夹id>，配合位置参数作为本地路径）
+	syncLocal  []string // 与 syncSpecs 一一对应的本地同步路径（位置参数）
 	port       int
 	passwd     string // -P/--passwd：共享访问密码
 	hasPasswd  bool   // 是否显式给出了 -P/--passwd（含空值，空值表示移除密码）
@@ -42,6 +44,8 @@ func parseFlags() (*options, []string) {
 	flag.StringVar(&opts.passwd, "passwd", "", "共享访问密码")
 	flag.StringVar(&opts.passwd, "P", "", "共享访问密码（-P, --passwd 简写）")
 	flag.StringVar(&opts.hostname, "hostname", "", "自定义节点名称（本节点在局域网中显示的名称；默认用系统主机名）")
+	flag.Var((*dirFlags)(&opts.syncSpecs), "sync", "创建同步文件夹：<远程ip>:<文件夹id>，配合位置参数作为本地路径（可多次指定，-s, --sync）")
+	flag.Var((*dirFlags)(&opts.syncSpecs), "s", "创建同步文件夹（-s, --sync 简写），可多次指定")
 	flag.BoolVar(&opts.showHelp, "h", false, "显示帮助信息")
 	flag.BoolVar(&opts.web, "web", false, "同时启动前端界面并在浏览器中打开")
 	flag.BoolVar(&opts.save, "save", false, "把本次参数设置追加保存到配置文件")
@@ -74,6 +78,18 @@ func usage() {
 
 参数:
   -d, --dir <目录>        要共享的文件夹，可多次指定（在配置文件 shared_folders 之外追加）
+  -s, --sync <远程ip>:<文件夹id> [本地路径]
+                          创建并后台持续同步一个本地文件夹：把远程节点（filespace）
+                          共享的某个文件夹单向镜像到本地目录（远程为事实源，本地改动
+                          会被覆盖/清理）。可多次指定，每个 -s 后紧跟一个位置参数作为
+                          本地同步路径；未给位置参数时默认使用当前目录下
+                          sync-<远程ip>-<文件夹id> 派生出的目录。同步在后台每约 30 秒
+                          对账一次，增量下载变动文件。
+                          文件夹 id 由远程节点的共享文件夹路径生成（8 位十六进制，
+                          打开该节点界面看文件夹地址栏即可）。远程节点端口非 8080 时用
+                          <ip>:<端口>:<文件夹id>；IPv6 用方括号包裹，如 [::1]:<id>。
+                          若该文件夹设置了访问密码，用 -P/--passwd 提供密码。
+                          已有后端在运行时，-s 由已运行的后端接管（同步立即生效）。
   --web                   同时启动前端界面并在浏览器中打开（默认只启动后端 API）
   -c, --config <文件>     配置文件路径（YAML，默认 <用户配置目录>/filespace/config.yaml；
                           无 $XDG_CONFIG_HOME/$HOME 时默认取程序所在目录的 config.yaml）
@@ -115,10 +131,15 @@ func usage() {
   filespace -P secret -d ~/docs --save
                                    共享 ~/docs 并设置默认密码，目录与密码一并保存
   filespace -p 9000 --save         把监听端口 9000 保存到配置文件
+  filespace -s 192.168.1.5:abcd1234 ~/remote-docs
+                                   把 192.168.1.5 上共享文件夹 id=abcd1234 的内容
+                                   后台同步到 ~/remote-docs（保持最新镜像）
+  filespace -s 192.168.1.5:9000:abcd1234 ~/docs -P secret
+                                   同步带密码的文件夹（端口 9000、密码 secret）
 
 配置优先级: 命令行 -p > 配置文件 > 默认值; -d 指定的目录追加到配置文件的 shared_folders
 之后（重复路径自动去重）。无参数且配置未列共享目录时，后端启动但不共享任何文件夹。
 检测到本机已有 filespace 后端在运行时（含运行在其他端口），本进程仅支持用 -d 追加、
-或与 -P 配合修改目录密码，把操作交给已运行的后端后自动退出。
+与 -P 配合修改目录密码、或用 -s 创建同步文件夹，把操作交给已运行的后端后自动退出。
 `)
 }
