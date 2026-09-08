@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"filespace/internal/pathutil"
 )
 
 // errFolderMissing 目标文件夹在远端已不存在（被移除或 id 有误）的错误哨兵。
@@ -244,17 +246,8 @@ func (t *Task) localPath(rel string) string {
 	root := filepath.Clean(t.spec.Local)
 	rel = filepath.ToSlash(strings.TrimPrefix(rel, "/"))
 	p := filepath.Join(root, filepath.FromSlash(rel))
-	if !within(root, p) {
+	if !pathutil.Within(root, p) {
 		return root
 	}
 	return p
-}
-
-// within 判断 child 是否位于 parent 目录内。
-func within(parent, child string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

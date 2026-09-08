@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"filespace/internal/model"
+	"filespace/internal/pathutil"
 )
 
 // Tree 返回共享目录内相对路径 rel 下的文件列表（懒加载，仅一层）。
@@ -96,7 +97,7 @@ func resolvePath(root, rel string) (string, error) {
 	root = filepath.Clean(root)
 	rel = cleanRel(rel)
 	full := filepath.Join(root, filepath.FromSlash(rel))
-	if !within(root, full) {
+	if !pathutil.Within(root, full) {
 		return "", ErrPathForbidden
 	}
 	return full, nil
@@ -107,13 +108,4 @@ func cleanRel(rel string) string {
 	rel = filepath.ToSlash(rel)
 	rel = strings.TrimPrefix(rel, "/")
 	return filepath.ToSlash(filepath.Clean(rel))
-}
-
-// within 判断 child 是否位于 parent 目录内。
-func within(parent, child string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

@@ -65,7 +65,7 @@
 | Windows | x64 | ✅ |
 | macOS | ARM64（Apple Silicon）/ x64（Intel） | ✅ |
 
-> ⚠️ **macOS 未经测试**：作者没有 Mac 电脑，macOS（darwin）二进制为交叉编译产物，「在浏览器中打开界面」（`open`）与系统原生目录选择器（`osascript`）等 macOS 特有逻辑未在真实 Mac 上验证，如遇问题请提交 Issue 反馈。
+> ⚠️ **macOS 未经测试**：作者没有 Mac 电脑，macOS（darwin）二进制为交叉编译产物，「在浏览器中打开界面」（`open`）与系统原生目录选择器（zenity 库在 macOS 走 `osascript`）等 macOS 特有逻辑未在真实 Mac 上验证，如遇问题请提交 Issue 反馈。
 
 ## 📦 安装与启动
 
@@ -247,7 +247,7 @@ filespace — 文件空间后端（局域网文件共享 API + 前端托管）
 | `POST /api/auth` | 校验共享访问密码，签发访问令牌（令牌绑定密码，同一密码的文件夹可共用；本节点没有需要密码的文件夹时返回 404） |
 | `POST /api/folders/add` | 追加共享目录（仅供本机回环地址调用，同机另一 filespace 进程移交目录用；本机管理页添加时可用 `password` 字段为该文件夹设置访问密码） |
 | `POST /api/folders/remove` | 移除共享目录（仅供本机回环地址调用，本机管理页用） |
-| `POST /api/local/pick-directory` | 在本机弹出系统原生目录选择对话框并返回所选目录绝对路径（仅供本机回环地址调用；Linux 用 zenity/kdialog 等、Windows 用 PowerShell、macOS 用 osascript；用户取消返回 `cancelled`） |
+| `POST /api/local/pick-directory` | 在本机弹出系统原生目录选择对话框并返回所选目录绝对路径（仅供本机回环地址调用；跨平台统一由 ncruces/zenity 提供——Linux 依赖已安装的 zenity/qarma/matedialog 之一、Windows 原生对话框、macOS 走 osascript；用户取消返回 `cancelled`） |
 | `GET /api/folders/{id}/tree` | 文件树（懒加载；文件夹设置密码时需携带访问令牌，本机回环豁免） |
 | `GET /api/folders/{id}/download` | 文件下载（支持 Range 断点续传；文件夹设置密码时需携带访问令牌，本机回环豁免） |
 | `POST /api/folders/{id}/open` | 用系统默认应用打开本机文件（仅供本机回环地址调用，xdg-open / open / cmd start） |

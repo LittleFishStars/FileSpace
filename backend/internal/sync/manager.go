@@ -6,14 +6,18 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/cenkalti/backoff"
 )
 
 // 周期对账间隔：远端文件变化会在该时长内同步到本地（本地按固定周期轮询远端树）。
 const (
 	// pollInterval 两轮成功对账之间的间隔。
 	pollInterval = 30 * time.Second
-	// retryDelay 单轮对账失败后的重试间隔（远端点暂时不可达时退避）。
+	// retryDelay 单轮对账失败后的首次重试间隔（指数退避的初始值，见 loop 中 backoff 配置）。
 	retryDelay = 10 * time.Second
+	// retryMaxInterval 失败重试的指数退避上限：避免远端长时间不可达时无限加长等待。
+	retryMaxInterval = 5 * time.Minute
 	// initialDelay 首次对账前等待：给远端节点留出启动/恢复时间。
 	initialDelay = 2 * time.Second
 )
@@ -55,7 +59,8 @@ func (t *Task) start(ctx context.Context) {
 }
 
 // loop 周期对账，直到 ctx 取消：每轮成功对账后等待 pollInterval，
-// 失败后等待 retryDelay 重进；目标文件夹在远端消失（永久错误）时停止任务。
+// 失败后用指数退避（retryDelay 起步、retryMaxInterval 封顶）等待重进；
+// 目标文件夹在远端消失（永久错误）时停止任务。
 func (t *Task) loop(ctx context.Context) {
 	defer close(t.done)
 	// 首次对账前等待 initialDelay
@@ -68,6 +73,14 @@ func (t *Task) loop(ctx context.Context) {
 		return
 	case <-time.After(initialDelay):
 	}
+
+	// 失败重试的指数退避：复用 cenkalti/backoff（此前仅作为 zeroconf 的
+	// 间接依赖，这里转正直接使用），避免远端短时不可达时按固定间隔反复打点。
+	bo := backoff.NewExponentialBackOff()
+	bo.InitialInterval = retryDelay
+	bo.Multiplier = 2
+	bo.MaxInterval = retryMaxInterval
+	bo.MaxElapsedTime = 0 // 不因累计时长放弃重试（对账会一直持续到远端恢复或任务停止）
 
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -83,6 +96,7 @@ func (t *Task) loop(ctx context.Context) {
 		}
 		err := t.reconcileOnce(ctx, newRemoteClient(t.spec))
 		if err == nil {
+			bo.Reset() // 成功一轮后重置退避，下次失败重新从 retryDelay 起步
 			timer.Reset(pollInterval)
 			continue
 		}
@@ -92,8 +106,9 @@ func (t *Task) loop(ctx context.Context) {
 			t.stop(statusStopped)
 			return
 		}
-		log.Printf("同步 %s <- %s 失败: %v（%s 后重试）", t.spec.Local, t.Remote(), err, retryDelay)
-		timer.Reset(retryDelay)
+		delay := bo.NextBackOff()
+		log.Printf("同步 %s <- %s 失败: %v（%s 后重试）", t.spec.Local, t.Remote(), err, delay)
+		timer.Reset(delay)
 	}
 }
 
