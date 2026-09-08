@@ -28,6 +28,48 @@ type Task struct {
 	status syncStatus
 	done   chan struct{} // 对账循环退出后关闭（供 Stop 等待）
 	hush   chan struct{} // close 后终止对账循环（本地切换停止态）
+
+	snapMu sync.Mutex // 保护 snap（API 轮询与对账 goroutine 并发读写）
+	snap   TaskSnapshot
+}
+
+// TaskSnapshot 同步任务的实时状态快照（供前端轮询 /api/sync/status）。
+// phase 取值：listing（获取文件列表）/ downloading（下载）/ ""（空闲或结束）；
+// done/total 当前阶段进度（获取列表阶段为已发现字节/文件夹总大小，
+// 下载阶段为已下载字节/文件夹总大小），speed 下载速度（字节/秒）。
+type TaskSnapshot struct {
+	Remote string `json:"remote"` // 远端定位（ip:port:folderid）
+	Local  string `json:"local"`  // 本地同步目录
+	Status string `json:"status"` // 任务生命周期：等待启动/同步中/已停止
+	Phase  string `json:"phase"`  // listing / downloading / ""
+	Done   int64  `json:"done"`
+	Total  int64  `json:"total"`
+	Speed  int64  `json:"speed"` // 字节/秒，取整
+}
+
+// publishProgress 把当前进度快照同步到 Task（由 progress.update 回调调用，
+// 运行在对账 goroutine 内；API 轮询通过 Snapshot 读取，锁保护并发）。
+func (t *Task) publishProgress(p *progress) {
+	t.snapMu.Lock()
+	t.snap.Remote = t.Remote()
+	t.snap.Local = t.spec.Local
+	t.snap.Status = t.status.String()
+	t.snap.Phase = p.phase
+	if p.listing {
+		t.snap.Done = p.listedBytes
+	} else {
+		t.snap.Done = p.done
+	}
+	t.snap.Total = p.total
+	t.snap.Speed = int64(p.speed)
+	t.snapMu.Unlock()
+}
+
+// Snapshot 返回当前任务快照的副本（并发安全，供 API 轮询）。
+func (t *Task) Snapshot() TaskSnapshot {
+	t.snapMu.Lock()
+	defer t.snapMu.Unlock()
+	return t.snap
 }
 
 // syncStatus 任务生命周期状态。
@@ -51,11 +93,24 @@ func (s syncStatus) String() string {
 }
 
 // start 在共享 ctx 生命周期内启动任务对账循环（进程内仅调用一次）。
+// 启动时立即发布初始快照（phase=waiting），让前端在首次对账前的
+// initialDelay 内就能显示浮动进度条，不留「点了同步没有反应」的空窗。
 func (t *Task) start(ctx context.Context) {
 	t.status = statusRunning
 	t.done = make(chan struct{})
 	t.hush = make(chan struct{})
+	t.publishWaiting()
 	go t.loop(ctx)
+}
+
+// publishWaiting 发布「等待首次对账」的初始快照（phase=waiting）。
+func (t *Task) publishWaiting() {
+	t.snapMu.Lock()
+	t.snap.Remote = t.Remote()
+	t.snap.Local = t.spec.Local
+	t.snap.Status = t.status.String()
+	t.snap.Phase = "waiting"
+	t.snapMu.Unlock()
 }
 
 // loop 周期对账，直到 ctx 取消：每轮成功对账后等待 pollInterval，
@@ -156,6 +211,17 @@ func (m *Manager) Add(spec Spec) {
 	if m.ctx != nil {
 		t.start(m.ctx)
 	}
+}
+
+// List 返回全部同步任务的状态快照（供前端轮询 /api/sync/status）。
+func (m *Manager) List() []TaskSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]TaskSnapshot, 0, len(m.tasks))
+	for _, t := range m.tasks {
+		out = append(out, t.Snapshot())
+	}
+	return out
 }
 
 // Start 启动全部已注册任务（幂等；进程启动后调用一次）。

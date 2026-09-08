@@ -27,6 +27,10 @@ var progressMu sync.Mutex
 // 数万，逐条刷新会刷屏并争用输出锁拖慢对账，按此间隔节流；最终态强制刷新。
 const renderInterval = 120 * time.Millisecond
 
+// updateInterval 进度快照（供前端轮询）的最小更新间隔：快照写入涉及加锁与
+// HTTP 轮询侧读取，无需逐文件高频更新，按此间隔节流；阶段切换/结束强制更新。
+const updateInterval = 200 * time.Millisecond
+
 // progress 一个同步任务当前阶段的进度状态。
 type progress struct {
 	enabled  bool // 非 TTY 时为 false，render/finish 均为空操作
@@ -39,13 +43,22 @@ type progress struct {
 	listedBytes int64 // 已从远端清单中发现的文件字节和
 
 	// 下载阶段
-	total int64 // 进度分母：目标文件夹总大小（字节）
-	count int   // 本轮待下载文件数（内部用于判定是否全部处理完，不参与显示）
-	done  int64 // 进度分子：已下载字节
-	doneN int   // 已下载文件数（内部计数）
+	total int64   // 进度分母：目标文件夹总大小（字节）
+	count int     // 本轮待下载文件数（内部用于判定是否全部处理完，不参与显示）
+	done  int64   // 进度分子：已下载字节
+	doneN int     // 已下载文件数（内部计数）
+	speed float64 // 下载速度（字节/秒，最近一次 add 时估算）
+
+	// 阶段标识（供前端轮询快照）：listing / downloading / ""（空闲或结束）
+	phase string
 
 	start      time.Time // 阶段开始时间（速度用）
 	lastRender time.Time // 上次实际写终端的时刻（节流用）
+	lastUpdate time.Time // 上次推送快照的时刻（节流用）
+
+	// update 可选回调：进度或阶段变化时调用（供 Task 把快照同步给前端查询）。
+	// 由创建方注入；nil 时不推送（如单元测试/非运行环境）。
+	update func()
 }
 
 // newProgress 创建进度条。stdout 非终端时返回 enabled=false 的空进度条（调用方
@@ -76,8 +89,10 @@ func isTTY(w io.Writer) bool {
 // 首行进度，让用户点完同步马上看到反馈（大文件夹遍历耗时较长，不能干等）。
 func (p *progress) beginListing() {
 	p.listing = true
+	p.phase = "listing"
 	p.start = time.Now()
 	p.render()
+	p.syncUpdate()
 }
 
 // scanAdd 记录从远端清单中发现的字节（目录无大小不计入）。
@@ -85,6 +100,7 @@ func (p *progress) beginListing() {
 func (p *progress) scanAdd(size int64) {
 	p.listedBytes += size
 	p.maybeRender()
+	p.syncUpdate()
 }
 
 // endListing 结束「获取文件列表」阶段（collectRemote 完成后调用）：先强制渲染
@@ -92,18 +108,45 @@ func (p *progress) scanAdd(size int64) {
 func (p *progress) endListing() {
 	p.render()
 	p.listing = false
+	p.syncUpdate()
 }
 
-// add 累加一条下载完成（bytes 为该文件实际下载字节数），并刷新进度行。
+// beginDownload 进入「下载」阶段：重置计时起点（速度按下载本阶段计算），
+// 并把阶段标识切到 downloading 供前端进度条换色。
+func (p *progress) beginDownload() {
+	p.phase = "downloading"
+	p.start = time.Now()
+	p.syncUpdate()
+}
+
+// add 累加一条下载完成（bytes 为该文件实际下载字节数），并刷新进度行与速度。
 // 最后一个文件（doneN==count）强制渲染，保证 100% 完整显示。
 func (p *progress) add(bytes int64) {
 	p.done += bytes
 	p.doneN++
+	if elapsed := time.Since(p.start).Seconds(); elapsed > 0 {
+		p.speed = float64(p.done) / elapsed // 字节/秒
+	}
 	if p.doneN >= p.count {
 		p.render() // 完成态强制
 	} else {
 		p.maybeRender()
 	}
+	p.syncUpdate()
+}
+
+// syncUpdate 推送进度快照（阶段/分子/分母/速度给上层 Task 同步到前端查询）。
+// 按 updateInterval 节流；阶段切换与结束（beginDownload/finish 等）由调用方
+// 在关键路径上直接调用，normal 参数为 false 时仍按节流合并高频的逐文件更新。
+func (p *progress) syncUpdate() {
+	if p.update == nil {
+		return
+	}
+	if time.Since(p.lastUpdate) < updateInterval {
+		return
+	}
+	p.lastUpdate = time.Now()
+	p.update()
 }
 
 // maybeRender 节流版渲染：距上次实际写终端不足 renderInterval 时跳过。
@@ -170,9 +213,15 @@ func (p *progress) render() {
 	progressMu.Unlock()
 }
 
-// finish 清除进度行（回到行首并擦除整行），随后可打印摘要等完整行。
+// finish 结束进度：清空阶段标识并强制推送一次结束快照（即使非 TTY 也要让
+// 前端轮询知道本阶段已结束），随后清除进度行（回到行首并擦除整行）。
 // 仅当本进度条真正渲染过进度行时才清理，避免产生空清行噪音。
 func (p *progress) finish() {
+	p.phase = ""
+	if p.update != nil {
+		p.lastUpdate = time.Now()
+		p.update()
+	}
 	if !p.enabled || !p.rendered {
 		return
 	}

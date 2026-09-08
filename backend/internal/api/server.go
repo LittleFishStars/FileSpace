@@ -88,6 +88,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/folders/password", s.handleSetFolderPassword)
 	mux.HandleFunc("POST /api/local/pick-directory", s.handlePickDirectory)
 	mux.HandleFunc("POST /api/sync/add", s.handleSyncAdd)
+	mux.HandleFunc("GET /api/sync/status", s.handleSyncStatus)
 	mux.HandleFunc("GET /api/folders/{id}/tree", s.handleTree)
 	mux.HandleFunc("GET /api/folders/{id}/download", s.handleDownload)
 	mux.HandleFunc("POST /api/folders/{id}/open", s.handleOpenFile)

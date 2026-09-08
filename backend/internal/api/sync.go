@@ -33,3 +33,16 @@ func (s *Server) handleSyncAdd(w http.ResponseWriter, r *http.Request) {
 	s.syncs.Add(req.Spec)
 	writeJSON(w, map[string]any{"added": req.Local})
 }
+
+// handleSyncStatus 返回全部后台同步任务的实时状态快照（供前端右下角浮动
+// 进度条轮询：阶段 + 进度分数 + 下载速度）。仅允许本机调用。
+func (s *Server) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireLoopback(w, r) {
+		return
+	}
+	if s.syncs == nil {
+		writeJSON(w, map[string]any{"tasks": []any{}})
+		return
+	}
+	writeJSON(w, map[string]any{"tasks": s.syncs.List()})
+}

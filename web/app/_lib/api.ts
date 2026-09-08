@@ -166,3 +166,25 @@ export interface ApiSyncSpec {
 /** 添加后台同步任务（POST /api/sync/add，仅本机回环调用生效） */
 export const addSync = (spec: ApiSyncSpec) =>
     postJSON<{added: string}>('/api/sync/add', spec).then((r) => r.added)
+
+/** 后台同步任务的实时状态快照（与 backend/internal/sync.TaskSnapshot 对齐） */
+export interface ApiSyncTask {
+    /** 远端定位（ip:port:folderid） */
+    remote: string
+    /** 本地同步目录 */
+    local: string
+    /** 任务生命周期：等待启动/同步中/已停止 */
+    status: string
+    /** 当前阶段：listing（获取文件列表）/ downloading（下载）/ ""（空闲或结束） */
+    phase: string
+    /** 当前阶段进度分子：获取列表阶段为已发现字节，下载阶段为已下载字节 */
+    done: number
+    /** 进度分母：目标文件夹总大小（字节） */
+    total: number
+    /** 下载速度（字节/秒，仅下载阶段有效） */
+    speed: number
+}
+
+/** 查询全部后台同步任务状态（GET /api/sync/status，仅本机回环调用生效） */
+export const fetchSyncStatus = () =>
+    fetchJSON<{tasks: ApiSyncTask[]}>('/api/sync/status').then((r) => r.tasks)

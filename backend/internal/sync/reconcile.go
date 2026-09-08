@@ -63,7 +63,8 @@ func (t *Task) reconcileOnce(ctx context.Context, c *remoteClient) error {
 	// 这类深层目录会耗时较久，必须一开始就有「获取文件列表」的大小百分比反馈，
 	// 而不是干等到下载阶段才有动静。
 	prog := newProgress(os.Stdout, t.Remote())
-	prog.total = folder.TotalSize // 分母：目标文件夹总大小（stats 后台扫描）
+	prog.total = folder.TotalSize                    // 分母：目标文件夹总大小（stats 后台扫描）
+	prog.update = func() { t.publishProgress(prog) } // 快照同步给前端轮询
 	prog.beginListing()
 	remote, err := collectRemote(ctx, c, "", prog)
 	if err != nil {
@@ -82,6 +83,9 @@ func (t *Task) reconcileOnce(ctx context.Context, c *remoteClient) error {
 	if toDelete != nil {
 		t.removeExtras(remote, toDelete)
 	}
+	// 本轮对账结束：进度归还空闲（下一轮对账重新开始），避免前端在
+	// 30s 轮询间隔内一直显示上一轮的残留进度。
+	prog.finish()
 	return nil
 }
 
@@ -162,13 +166,14 @@ func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []rem
 		pendingBytes += re.size
 	}
 
-	// 阶段二：执行下载。无待下载（纯增量命中）时只清掉「获取文件列表」的进度行，
-	// 本地冗余清理（collectExtras）随之进行。
+	// 阶段二：执行下载。无待下载（纯增量命中）时仅保留「获取文件列表」结果，
+	// 本轮对账结束由调用方统一 finish；本地冗余清理（collectExtras）随之进行。
 	if len(pending) > 0 {
 		prog.count = len(pending)
 		if prog.total <= 0 {
 			prog.total = pendingBytes // 文件夹总大小不可用：回退为本轮待下载量
 		}
+		prog.beginDownload() // 阶段切到「下载」：前端进度条换色 + 速度按本阶段计算
 		for _, p := range pending {
 			if err := c.download(ctx, p.rel, p.local); err != nil {
 				// 先清掉进度行再打印错误，避免错误与进度条串行；后续 add 会重新渲染进度
@@ -184,9 +189,6 @@ func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []rem
 		// 本轮汇总（非 TTY 也会打印，方便重定向到文件时观察进度结果）
 		fmt.Printf("✅ 同步 %s 完成：本轮下载 %s，文件夹总大小 %s\n",
 			t.Remote(), formatBytes(prog.done), formatBytes(prog.total))
-	} else {
-		// 本轮无待下载：清掉「获取文件列表」的进度行
-		prog.finish()
 	}
 	return t.collectExtras(remote)
 }
