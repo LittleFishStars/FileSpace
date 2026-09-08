@@ -297,6 +297,9 @@ export default function LocalPanel() {
                     <span className="font-medium transition-colors duration-150 group-hover:text-blue-600 dark:group-hover:text-blue-400">
                         {record.name}
                     </span>
+                    <span className="text-xs font-normal text-neutral-400 dark:text-neutral-500">
+                        {record.id}
+                    </span>
                     {record.auth && (
                         <Tooltip title="该文件夹设置了访问密码，其他节点需输入密码才能访问">
                             <LockOutlined className="text-amber-500 dark:text-amber-400"/>

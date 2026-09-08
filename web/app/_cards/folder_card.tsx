@@ -41,6 +41,9 @@ export default function FolderCard({
             <span className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-100">
               {folder.name}
             </span>
+            <span className="shrink-0 text-xs font-normal text-neutral-400 dark:text-neutral-500">
+              {folder.id}
+            </span>
             {folder.auth && (
               <Tooltip title="该文件夹设置了访问密码，需输入密码才能访问">
                 <LockOutlined className="shrink-0 text-sm text-amber-500 dark:text-amber-400" />
