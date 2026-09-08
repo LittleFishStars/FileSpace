@@ -148,3 +148,21 @@ export const downloadUrl = (folderId: string, path: string, base = '', token?: s
  */
 export const authLogin = (base: string, password: string) =>
     postJSON<{token: string}>(`${base}/api/auth`, {password}).then((r) => r.token)
+
+/** 后台同步任务的配置（与 backend/internal/sync.Spec 对齐） */
+export interface ApiSyncSpec {
+    /** 远程节点地址（不带端口）：IP 或主机名 */
+    host: string
+    /** 远程节点监听端口；0 表示使用默认端口 8080 */
+    port?: number
+    /** 远程节点上要同步的共享文件夹 id（8 位十六进制） */
+    folder_id: string
+    /** 本地同步文件夹路径（不存在则自动创建） */
+    local: string
+    /** 访问远端该文件夹所用的密码（该文件夹设置了访问密码时使用；空表示开放） */
+    passwd?: string
+}
+
+/** 添加后台同步任务（POST /api/sync/add，仅本机回环调用生效） */
+export const addSync = (spec: ApiSyncSpec) =>
+    postJSON<{added: string}>('/api/sync/add', spec).then((r) => r.added)

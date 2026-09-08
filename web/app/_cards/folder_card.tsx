@@ -1,8 +1,8 @@
 'use client'
 
-import { FolderOutlined, LockOutlined } from '@ant-design/icons'
+import { FolderOutlined, LockOutlined, SyncOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
-import { App as AntdApp, Tooltip } from 'antd'
+import { App as AntdApp, Button, Tooltip } from 'antd'
 import { formatSize, formatTime } from '../_lib/format'
 import { copyText } from '../_lib/clipboard'
 import type { ApiFolderInfo } from '../_lib/api'
@@ -11,13 +11,17 @@ import type { ApiFolderInfo } from '../_lib/api'
  * 文件夹卡片。
  * 展示共享文件夹的核心信息：文件夹名、文件数与总大小。
  * 直接复用后端的 ApiFolderInfo 数据模型（不另造精简接口，避免重复映射）。
+ * onSync 存在时在卡片右侧渲染「同步」按钮（把该文件夹同步到本机）。
  */
 export default function FolderCard({
   folder,
   className,
+  onSync,
 }: {
   folder: ApiFolderInfo
   className?: string
+  /** 提供同步入口时渲染「同步」按钮（点击把远程共享文件夹同步到本机） */
+  onSync?: () => void
 }) {
   // 全量统计：文件数与总大小由后端后台扫描缓存（目录较大时首次显示可能有短暂延迟）
   const stats = [
@@ -46,7 +50,7 @@ export default function FolderCard({
       className={className}
       bodyStyle={{ padding: 16 }}
     >
-      {/* 头部：图标 + 名称 + 更新时间 */}
+      {/* 头部：图标 + 名称 + 更新时间；右侧为同步入口（可选） */}
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-400/20 dark:text-amber-400">
           <FolderOutlined className="text-2xl" />
@@ -74,6 +78,21 @@ export default function FolderCard({
             {formatTime(folder.updatedAt)} 更新
           </div>
         </div>
+        {/* 同步入口：卡片整体被 Link 包裹，阻止冒泡避免触发进入浏览页的跳转 */}
+        {onSync && (
+          <Button
+            type="primary"
+            size="small"
+            icon={<SyncOutlined />}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onSync()
+            }}
+          >
+            同步
+          </Button>
+        )}
       </div>
 
       {/* 统计信息行 */}
