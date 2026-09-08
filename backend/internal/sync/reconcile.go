@@ -102,7 +102,19 @@ func collectRemote(ctx context.Context, c *remoteClient, dir string) ([]remoteEn
 
 // reconcilePulls 逐远端条目对账到本地（增量下载/类型冲突重建），
 // 返回本地需要清理的多余条目（rel → 是否为目录；目录以 "/" 结尾）。
+// 分两阶段执行：先规划（处理目录结构、判定待下载文件并统计总量），
+// 再下载并刷新终端进度条（仅 TTY 渲染，管道/重定向时静默）。
 func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []remoteEntry) map[string]bool {
+	// 待下载列表：rel（远端相对路径）+ 本地绝对路径 + 大小 + 远端修改时间。
+	type pullTask struct {
+		rel   string
+		local string
+		size  int64
+		mod   string
+	}
+	var pending []pullTask
+
+	// 阶段一：规划——处理目录结构（含类型冲突重建），收集需要下载的文件。
 	for _, re := range remote {
 		local := t.localPath(re.rel)
 		if re.isDir {
@@ -119,27 +131,48 @@ func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []rem
 			continue
 		}
 
-		// 远端是文件
+		// 远端是文件：本地是目录则删除重建；本地文件「大小+修改时间」一致则跳过（增量命中）
 		fi, statErr := os.Stat(local)
 		switch {
 		case statErr == nil && fi.IsDir():
-			// 本地是目录而远端是文件：删除目录后重建为文件（类型冲突）
 			if err := os.RemoveAll(local); err != nil {
 				fmt.Printf("同步重建 %q（远端为文件，本地为目录）失败: %v\n", re.rel, err)
 				continue
 			}
 		case statErr == nil:
-			// 本地已是文件：大小+修改时间一致则跳过（增量命中），否则重新下载
 			if _, unchanged := fileUnchanged(fi, re); unchanged {
 				continue
 			}
 		}
-		if err := c.download(ctx, re.rel, local); err != nil {
-			fmt.Printf("同步下载 %q 失败: %v\n", re.rel, err)
-		} else {
-			// 打上远端修改时间戳：保证「大小+修改时间」判定在下次对账稳定命中（真正增量）
-			applyRemoteModTime(local, re.modTime)
+		pending = append(pending, pullTask{rel: re.rel, local: local, size: re.size, mod: re.modTime})
+	}
+
+	// 阶段二：执行下载 + 终端进度条。无待下载（纯增量命中）时跳过，不留进度条痕迹。
+	if len(pending) > 0 {
+		var total int64
+		for _, p := range pending {
+			total += p.size
 		}
+		prog := newProgress(os.Stdout, t.Remote())
+		prog.count = len(pending)
+		prog.total = total
+		okN := 0
+		for _, p := range pending {
+			if err := c.download(ctx, p.rel, p.local); err != nil {
+				// 先清掉进度行再打印错误，避免错误与进度条串行；后续 add 会重新渲染进度
+				prog.finish()
+				fmt.Printf("同步下载 %q 失败: %v\n", p.rel, err)
+				continue
+			}
+			// 打上远端修改时间戳：保证「大小+修改时间」判定在下次对账稳定命中（真正增量）
+			applyRemoteModTime(p.local, p.mod)
+			prog.add(p.size)
+			okN++
+		}
+		prog.finish()
+		// 本轮汇总（非 TTY 也会打印，方便重定向到文件时观察进度结果）
+		fmt.Printf("✅ 同步 %s 完成：本轮下载 %d/%d 个文件（%s）\n",
+			t.Remote(), okN, len(pending), formatBytes(prog.done))
 	}
 	return t.collectExtras(remote)
 }

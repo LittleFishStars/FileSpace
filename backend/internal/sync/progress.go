@@ -1,0 +1,153 @@
+package sync
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"sync"
+	"time"
+)
+
+// 终端进度条：在同步任务逐文件下载时，用 \r 覆盖单行显示「已下载/总数 字节 速度」。
+// 仅当 stdout 是真实终端（TTY）时渲染；管道/重定向（如重定向到日志文件）时静默，
+// 避免把 \r 控制字符写进日志。多个同步任务并发时用包级互斥串行化刷新，
+// 防止各任务进度行互相打断。
+
+// progressMu 串行化所有进度条的一次刷新：多任务并发下载时，每次整行 \r 覆盖
+// 在锁内完成，行内容不会被交错（视觉上本次显示哪个任务由最后一次刷新决定）。
+var progressMu sync.Mutex
+
+// progress 一个正在下载阶段的进度条状态。
+type progress struct {
+	enabled  bool // 非 TTY 时为 false，render/finish 均为空操作
+	rendered bool // 是否真正输出过进度行（finish 仅需清理渲染过的行）
+	w        io.Writer
+	id       string // 远程定位 + 文件夹 id（如 192.168.1.5:8080:abcd1234）
+	total    int64  // 本轮待下载总字节
+	count    int    // 本轮待下载文件数
+	done     int64  // 已下载字节
+	doneN    int    // 已下载文件数
+	start    time.Time
+}
+
+// newProgress 创建进度条。stdout 非终端时返回 enabled=false 的空进度条（调用方
+// 无需区分，add/render/finish 均安全）。
+func newProgress(w io.Writer, id string) *progress {
+	return &progress{
+		enabled: isTTY(w),
+		w:       w,
+		id:      id,
+		start:   time.Now(),
+	}
+}
+
+// isTTY 判断写入目标是否为字符设备（真实终端）。管道、文件、NUL 均非 TTY。
+func isTTY(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// add 累加一条下载完成（bytes 为该文件实际下载字节数），并刷新进度行。
+func (p *progress) add(bytes int64) {
+	p.done += bytes
+	p.doneN++
+	p.render()
+}
+
+// render 刷新单行进度。格式：
+//
+//	同步 <id>：下载 3/12 个文件 4.2 MB / 15.0 MB（25%） 2.3 MB/s
+//
+// 用空格补齐行尾，避免上次更长的内容残留。
+func (p *progress) render() {
+	if !p.enabled || p.count == 0 {
+		return
+	}
+	elapsed := time.Since(p.start).Seconds()
+	var speed, eta string
+	if elapsed > 0 && p.done > 0 {
+		rate := float64(p.done) / elapsed
+		speed = fmt.Sprintf(" %.1f MB/s", rate/(1024*1024))
+		if p.done < p.total {
+			remain := float64(p.total-p.done) / rate
+			eta = fmt.Sprintf(" 剩余 %s", humanDuration(time.Duration(remain*float64(time.Second))))
+		}
+	}
+	line := fmt.Sprintf("\r同步 %s：下载 %d/%d 个文件 %s / %s（%d%%）%s%s",
+		p.id,
+		p.doneN, p.count,
+		formatBytes(p.done), formatBytes(p.total),
+		int(p.done*100/p.total),
+		speed, eta,
+	)
+	// 预留行宽：补齐到 80 列，覆盖上一次更长内容
+	if len(line) < 80 {
+		line += spaces(80 - len(line))
+	}
+	progressMu.Lock()
+	_, _ = io.WriteString(p.w, line)
+	p.rendered = true
+	progressMu.Unlock()
+}
+
+// finish 清除进度行（回到行首并擦除整行），随后可打印摘要等完整行。
+// 仅当本进度条真正渲染过进度行时才清理，避免产生空清行噪音。
+func (p *progress) finish() {
+	if !p.enabled || !p.rendered {
+		return
+	}
+	progressMu.Lock()
+	_, _ = io.WriteString(p.w, "\r"+spaces(80)+"\r")
+	progressMu.Unlock()
+}
+
+// spaces 返回 n 个空格组成的字符串（n<=0 时返回空串）。
+func spaces(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = ' '
+	}
+	return string(b)
+}
+
+// formatBytes 把字节数格式化为人类可读（B/KB/MB/GB，带一位小数）。
+func formatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// humanDuration 把时长格式化为「XdHhMmSs」或分段（不足 1 分钟显示秒）。
+func humanDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	s := int(d.Seconds())
+	switch {
+	case s >= 86400:
+		return fmt.Sprintf("%dd%dh", s/86400, s%86400/3600)
+	case s >= 3600:
+		return fmt.Sprintf("%dh%dm", s/3600, s%3600/60)
+	case s >= 60:
+		return fmt.Sprintf("%dm%ds", s/60, s%60)
+	default:
+		return fmt.Sprintf("%ds", s)
+	}
+}
