@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"filespace/internal/model"
 )
 
 // 复刻 share.folderID：把路径 fnv32a 哈希后 hex 编码为 8 位十六进制。
@@ -284,6 +286,50 @@ func TestReconcileOpenFolderUnauthed(t *testing.T) {
 	}
 	if got := readLocal(t, filepath.Join(spec.Local, "open.txt")); got != "open content" {
 		t.Errorf("open.txt = %q，期望 open content", got)
+	}
+}
+
+// TestTreeLargeResponse 验证大体积目录列表（超出 http.Transport 预读缓冲，
+// 必须真正从网络读取响应体）能完整解析。
+// 回归：get() 曾在返回前 defer cancel() 请求 context，导致调用方读取响应体时
+// 底层连接已被关闭（use of closed network connection）——小响应恰好落在预读
+// 缓冲内不触发，大目录（如 .git/objects 的深层遍历）必现。
+func TestTreeLargeResponse(t *testing.T) {
+	count := 800 // 条目足够多，JSON 序列化后远超 transport 预读缓冲（默认 4KB）
+	entries := make([]model.FileInfo, 0, count)
+	for i := 0; i < count; i++ {
+		entries = append(entries, model.FileInfo{
+			Name:    fmt.Sprintf("file-%04d.bin", i),
+			Path:    fmt.Sprintf("file-%04d.bin", i),
+			Size:    100,
+			ModTime: "2024-01-01T10:00:00Z",
+		})
+	}
+	body, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) < 4096 {
+		t.Fatalf("测试数据不足 4KB（实际 %d），无法触发预读缓冲之外的真实读取", len(body))
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/folders/"+folderIDFor("share")+"/tree", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	host, portStr, _ := strings.Cut(strings.TrimPrefix(srv.URL, "http://"), ":")
+	spec := Spec{Host: host, FolderID: folderIDFor("share")}
+	fmt.Sscanf(portStr, "%d", &spec.Port)
+
+	got, err := newRemoteClient(spec).tree(context.Background(), "")
+	if err != nil {
+		t.Fatalf("大响应 tree 读取失败: %v", err)
+	}
+	if len(got) != count {
+		t.Errorf("解析条目数 = %d，期望 %d", len(got), count)
 	}
 }
 

@@ -68,11 +68,12 @@ func (c *remoteClient) authenticate(ctx context.Context) error {
 	return nil
 }
 
-// post 发送带 JSON 体的 POST 请求（带统一超时）。
+// post 发送带 JSON 体的 POST 请求。
+// 超时由 client.Timeout（30s，覆盖连接/请求/响应体读取）统一兜底，不在此
+// 额外包 context.WithTimeout：过早 cancel 会关闭底层连接，调用方返回后再读
+// 响应体会报 use of closed network connection。
 func (c *remoteClient) post(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -80,15 +81,14 @@ func (c *remoteClient) post(ctx context.Context, path string, body []byte) (*htt
 	return client.Do(req)
 }
 
-// get 构造带统一超时与认证（令牌）的 GET 请求。
+// get 构造带认证（令牌）的 GET 请求。超时语义同 post：由 client.Timeout 兜底，
+// 不在此 cancel context（详见 post 注释——过早取消会令调用方读响应体时连接已关闭）。
 func (c *remoteClient) get(ctx context.Context, path string, query url.Values) (*http.Response, error) {
 	u := c.baseURL + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
