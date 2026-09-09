@@ -175,8 +175,9 @@ func (t *Task) reconcilePulls(ctx context.Context, c *remoteClient, remote []rem
 		}
 		prog.beginDownload() // 阶段切到「下载」：前端进度条换色 + 速度按本阶段计算
 		for _, p := range pending {
-			if err := c.download(ctx, p.rel, p.local); err != nil {
-				// 先清掉进度行再打印错误，避免错误与进度条串行；后续 add 会重新渲染进度
+			if err := c.download(ctx, p.rel, p.local, p.size, p.mod); err != nil {
+				// 先清掉进度行再打印错误，避免错误与进度条串行；后续 add 会重新渲染进度。
+				// 下载失败会保留 .sync-tmp 断点现场，下一轮对账自动续传。
 				prog.finish()
 				fmt.Printf("同步下载 %q 失败: %v\n", p.rel, err)
 				continue
@@ -241,6 +242,9 @@ func (t *Task) collectExtras(remote []remoteEntry) map[string]bool {
 		}
 		if _, ok := remoteSet[rel]; ok {
 			return nil // 远端存在：保留
+		}
+		if !d.IsDir() && isTmpArtifact(rel) {
+			return nil // 断点续传现场（未完成下载/版本元数据）：豁免清理
 		}
 		toDelete[rel] = d.IsDir()
 		if d.IsDir() {

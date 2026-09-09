@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"filespace/internal/model"
@@ -141,42 +142,171 @@ func (c *remoteClient) tree(ctx context.Context, rel string) ([]model.FileInfo, 
 	return files, nil
 }
 
-// download 把远程文件 rel 下载到本地磁盘 localPath：
-// 整包下载 + 临时文件原子改名，避免半截文件被下次对账误判为有效。
-// 是否跳过由对账层依据 tree 的 size/modTime 决定，本方法只负责「下载并落盘」。
-func (c *remoteClient) download(ctx context.Context, rel, localPath string) error {
+// 断点续传临时产物：大文件下载可能因客户端 30s 超时或网络中断而中止，
+// 中断时保留 .sync-tmp 已下载部分与 .sync-tmp.json 版本元数据，下次对账
+// 凭元数据校验远端版本一致后从断点（Range）续传而非整包重下。远端
+// handleDownload 用 http.ServeFile 原生支持 Range/If-Range，无需远端配合；
+// 远端为旧版本/不支持 Range 时回退 200 全量，行为不变。
+const (
+	tmpSuffix  = ".sync-tmp"      // 未完成下载的临时文件后缀
+	metaSuffix = ".sync-tmp.json" // 临时文件对应的远端版本元数据后缀
+)
+
+// tmpMeta 记录 .sync-tmp 对应哪个远端版本（下载开始时的 size+modTime）。
+// 续传前必须与当轮远端条目逐一比对：版本不一致（中断期间远端已更新）时
+// 从头下载，避免新旧内容拼接成损坏文件。
+type tmpMeta struct {
+	Size int64  `json:"size"` // 远端文件完整大小（字节）
+	Mod  string `json:"mod"`  // 远端文件修改时间（RFC3339，秒精度）
+}
+
+// resumeOffset 计算 .sync-tmp 的可续传偏移：临时文件与元数据存在、元数据与
+// 远端条目一致（同版本）、且已下载部分少于完整大小时，返回已下载字节数；
+// 否则返回 0（从头下载）。临时文件大小达到或超过远端大小视为异常状态，
+// 从头下载保证内容完整正确。
+func resumeOffset(tmpPath, metaPath string, size int64, mod string) int64 {
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return 0
+	}
+	var m tmpMeta
+	if json.Unmarshal(data, &m) != nil {
+		return 0
+	}
+	if m.Size != size || m.Mod != mod {
+		return 0
+	}
+	fi, err := os.Stat(tmpPath)
+	if err != nil || fi.IsDir() {
+		return 0
+	}
+	if fi.Size() <= 0 || fi.Size() >= size {
+		return 0
+	}
+	return fi.Size()
+}
+
+// openDownload 发起文件下载请求并返回响应体与实际写入起始偏移：
+//   - offset>0 时携带 Range: bytes=offset- 与 If-Range（以远端版本 modTime
+//     转 HTTP-date）。服务端支持且文件未变 → 206，body 从 offset 开始
+//     （可追加续传）；不支持或文件已变 → 200，body 从头开始（须截断重写）。
+//   - offset==0 时普通整包请求，恒 200。
+//
+// start 为实际应写入偏移（206 → offset，200 → 0），body 为响应流（调用方负责关闭）。
+func (c *remoteClient) openDownload(ctx context.Context, rel string, offset int64, mod string) (start int64, body io.ReadCloser, err error) {
+	q := url.Values{"path": {rel}}
+	u := c.baseURL + "/api/folders/" + c.spec.FolderID + "/download?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+		// If-Range：秒级一致才续传，否则服务端忽略 Range 返回 200 全量，
+		// 兜底「远端文件在 tree 快照后被修改」的竞态窗口。
+		if rt, perr := time.Parse(time.RFC3339, mod); perr == nil {
+			req.Header.Set("If-Range", rt.UTC().Format(http.TimeFormat))
+		}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("下载 %q 失败: %w", rel, err)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return 0, resp.Body, nil
+	case http.StatusPartialContent:
+		return offset, resp.Body, nil
+	default:
+		_ = resp.Body.Close()
+		return 0, nil, fmt.Errorf("下载 %q 失败（HTTP %d）", rel, resp.StatusCode)
+	}
+}
+
+// download 把远程文件 rel（远端大小 size、修改时间 mod）下载到本地磁盘
+// localPath，支持断点续传：本地已有匹配元数据的 .sync-tmp 时从断点续传，
+// 而非整包重下。下载失败（网络中断/超时）保留临时文件与元数据，供下一次
+// 对账续传；成功则以临时文件原子改名落盘并删除元数据，避免半截文件被
+// 下次对账误判为有效。是否跳过由对账层依据 tree 的 size/modTime 决定。
+func (c *remoteClient) download(ctx context.Context, rel, localPath string, size int64, mod string) error {
 	if err := ensureParentDir(localPath); err != nil {
 		return err
 	}
-	q := url.Values{"path": {rel}}
-	resp, err := c.get(ctx, "/api/folders/"+c.spec.FolderID+"/download", q)
+	tmp := localPath + tmpSuffix
+	metaPath := localPath + metaSuffix
+	offset := resumeOffset(tmp, metaPath, size, mod)
+	start, body, err := c.openDownload(ctx, rel, offset, mod)
 	if err != nil {
-		return fmt.Errorf("下载 %q 失败: %w", rel, err)
+		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载 %q 失败（HTTP %d）", rel, resp.StatusCode)
-	}
-	tmp := localPath + ".sync-tmp"
-	f, err := os.Create(tmp)
+	defer func() { _ = body.Close() }()
+
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("创建本地文件 %q 失败: %w", localPath, err)
 	}
-	_, copyErr := io.Copy(f, resp.Body)
+	// 整包下载（start==0，含续传被服务端拒绝回退全量）时截断临时文件：
+	// 其上可能遗留上次未完成/版本不符的部分数据。
+	if start == 0 {
+		if err := f.Truncate(0); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("重置本地文件 %q 失败: %w", localPath, err)
+		}
+	}
+	if _, err := f.Seek(start, io.SeekStart); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("定位本地文件 %q 失败: %w", localPath, err)
+	}
+	// 先落元数据再写数据：中断后凭它判断 .sync-tmp 对应哪个远端版本。
+	if err := saveTmpMeta(metaPath, size, mod); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("写入下载元数据失败: %w", err)
+	}
+
+	_, copyErr := io.Copy(f, body)
 	closeErr := f.Close()
 	if copyErr != nil {
-		_ = os.Remove(tmp)
+		// 保留 .sync-tmp 与元数据：下次对账从断点续传
 		return fmt.Errorf("写入本地文件 %q 失败: %w", localPath, copyErr)
 	}
 	if closeErr != nil {
-		_ = os.Remove(tmp)
 		return fmt.Errorf("关闭本地文件 %q 失败: %w", localPath, closeErr)
 	}
 	if err := os.Rename(tmp, localPath); err != nil {
-		_ = os.Remove(tmp)
 		return fmt.Errorf("落盘本地文件 %q 失败: %w", localPath, err)
 	}
+	removeTmpMeta(metaPath)
 	return nil
+}
+
+// saveTmpMeta 原子写入 .sync-tmp 对应的远端版本元数据（先写临时文件再改名，
+// 避免中断留下半截 json）。
+func saveTmpMeta(metaPath string, size int64, mod string) error {
+	data, err := json.Marshal(tmpMeta{Size: size, Mod: mod})
+	if err != nil {
+		return err
+	}
+	tmp := metaPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, metaPath)
+}
+
+// removeTmpMeta 删除 .sync-tmp 对应的元数据（下载完成落盘后调用；失败仅残留
+// 一个无引用 json，本地多余清理会豁免，不影响正确性）。
+func removeTmpMeta(metaPath string) { _ = os.Remove(metaPath) }
+
+// isTmpArtifact 判断相对路径是否为同步下载产生的临时产物（未完成下载的
+// .sync-tmp 及其元数据 *.sync-tmp.json、*.sync-tmp.json.tmp）。它们是断点
+// 续传的现场，清理本地多余条目时必须豁免，否则下一轮对账的续传现场被删。
+func isTmpArtifact(rel string) bool {
+	return strings.HasSuffix(rel, tmpSuffix) ||
+		strings.HasSuffix(rel, metaSuffix) ||
+		strings.HasSuffix(rel, metaSuffix+".tmp")
 }
 
 // ensureParentDir 确保文件所在父目录存在。

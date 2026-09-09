@@ -38,6 +38,8 @@ type fakeRemote struct {
 	password     string
 	folderAuth   bool
 	downloadCall int
+	lastRange    string // 最近一次下载请求的 Range 头（验证断点续传）
+	cutFirst     bool   // 首次下载只回一半内容并截断连接（模拟大文件中途网络中断）
 }
 
 // newFakeRemote 创建模拟远端（目标文件夹是否设密码与节点是否有密码一致）。
@@ -124,10 +126,25 @@ func (fr *fakeRemote) handleTree(w http.ResponseWriter, r *http.Request, rel str
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// handleDownload 返回远端文件内容并记录调用次数。
+// handleDownload 返回远端文件内容并记录调用次数与最近一次 Range 头。
+// cutFirst 开启时首次请求只写一半内容（Content-Length 声明完整大小但未写满，
+// 服务端返回后强制截断连接 → 客户端读到 unexpected EOF），模拟大文件下载
+// 中途网络中断；后续请求走正常路径（http.ServeFile 原生处理 Range 续传）。
 func (fr *fakeRemote) handleDownload(w http.ResponseWriter, r *http.Request, rel string) {
 	fr.downloadCall++
+	fr.lastRange = r.Header.Get("Range")
 	full := filepath.Join(fr.remoteRoot, filepath.FromSlash(rel))
+	if fr.cutFirst && fr.downloadCall == 1 {
+		data, err := os.ReadFile(full)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data[:len(data)/2])
+		return
+	}
 	http.ServeFile(w, r, full)
 }
 
@@ -387,5 +404,126 @@ func TestMissingFolderStops(t *testing.T) {
 	}
 	if !isMissingFolder(err) {
 		t.Errorf("应识别为文件夹缺失错误，得到: %v", err)
+	}
+}
+
+// TestDownloadResume 验证断点续传：大文件下载中断后保留 .sync-tmp 与元数据，
+// 第二轮对账从断点（Range）续传完成，最终文件完整且内容正确。
+func TestDownloadResume(t *testing.T) {
+	remoteRoot := t.TempDir()
+	content := strings.Repeat("sync-resume-data-", 1000) // 17000 字节
+	writeTestFile(t, filepath.Join(remoteRoot, "big.bin"), content, "2024-01-01T10:00:00Z")
+
+	fr := newFakeRemote(remoteRoot, "")
+	fr.cutFirst = true // 首次下载只回一半（模拟网络中断）
+	defer fr.Close()
+	spec := fr.spec
+	spec.Local = filepath.Join(t.TempDir(), "mirror")
+	task := &Task{spec: spec}
+	ctx := context.Background()
+
+	local := filepath.Join(spec.Local, "big.bin")
+	tmp := local + ".sync-tmp"
+	meta := local + ".sync-tmp.json"
+
+	// 第一轮：下载中断（只拿到一半），临时文件与元数据必须保留
+	if err := task.reconcileOnce(ctx, newRemoteClient(spec)); err != nil {
+		t.Fatalf("首次 reconcileOnce 失败: %v", err)
+	}
+	if _, err := os.Stat(local); !os.IsNotExist(err) {
+		t.Fatalf("中断下载后不应有最终文件 %s", local)
+	}
+	fi, err := os.Stat(tmp)
+	if err != nil {
+		t.Fatalf("中断下载后应保留临时文件 %s: %v", tmp, err)
+	}
+	if fi.Size() != int64(len(content)/2) {
+		t.Errorf("临时文件大小 = %d，期望 %d（一半）", fi.Size(), len(content)/2)
+	}
+	if _, err := os.Stat(meta); err != nil {
+		t.Fatalf("应保留断点元数据 %s: %v", meta, err)
+	}
+
+	// 第二轮：从断点续传，最终文件完整；下载请求携带 Range 头
+	fr.lastRange = ""
+	if err := task.reconcileOnce(ctx, newRemoteClient(spec)); err != nil {
+		t.Fatalf("续传 reconcileOnce 失败: %v", err)
+	}
+	if got := readLocal(t, local); got != content {
+		t.Errorf("续传后 big.bin 内容不完整（len=%d，期望 %d）", len(got), len(content))
+	}
+	if !strings.HasPrefix(fr.lastRange, "bytes=") {
+		t.Errorf("续传请求应携带 Range 头，实际: %q", fr.lastRange)
+	}
+	mustNotExist(t, tmp)
+	mustNotExist(t, meta)
+}
+
+// TestDownloadResumeVersionChanged 验证断点失效场景：中断期间远端文件更新
+// （修改时间变化），第二轮必须从头下载新版本，不得拼接出新旧混合文件。
+func TestDownloadResumeVersionChanged(t *testing.T) {
+	remoteRoot := t.TempDir()
+	contentV1 := "version-one-" + strings.Repeat("x", 1000)
+	contentV2 := "version-two-" + strings.Repeat("y", 1000)
+	writeTestFile(t, filepath.Join(remoteRoot, "big.bin"), contentV1, "2024-01-01T10:00:00Z")
+
+	fr := newFakeRemote(remoteRoot, "")
+	fr.cutFirst = true // 首次下载中断
+	defer fr.Close()
+	spec := fr.spec
+	spec.Local = filepath.Join(t.TempDir(), "mirror")
+	task := &Task{spec: spec}
+
+	if err := task.reconcileOnce(context.Background(), newRemoteClient(spec)); err != nil {
+		t.Fatalf("首次 reconcileOnce 失败: %v", err)
+	}
+	// 远端在中断后更新（大小相同、修改时间变化）：续传必须从头下载新版本
+	writeTestFile(t, filepath.Join(remoteRoot, "big.bin"), contentV2, "2024-02-01T10:00:00Z")
+
+	if err := task.reconcileOnce(context.Background(), newRemoteClient(spec)); err != nil {
+		t.Fatalf("版本变化后 reconcileOnce 失败: %v", err)
+	}
+	if got := readLocal(t, filepath.Join(spec.Local, "big.bin")); got != contentV2 {
+		t.Errorf("版本变化后应得到新内容（len=%d，期望 %d）", len(got), len(contentV2))
+	}
+	if fr.lastRange != "" {
+		t.Errorf("版本变化后应从头下载（无 Range），实际: %q", fr.lastRange)
+	}
+}
+
+// TestTmpArtifactExemptFromCleanup 验证断点续传现场（.sync-tmp 与元数据）
+// 不会被「本地多余条目清理」误删：镜像清理只针对远端不存在的普通文件。
+func TestTmpArtifactExemptFromCleanup(t *testing.T) {
+	remoteRoot := t.TempDir()
+	writeTestFile(t, filepath.Join(remoteRoot, "a.txt"), "keep", "")
+	fr := newFakeRemote(remoteRoot, "")
+	defer fr.Close()
+	spec := fr.spec
+	spec.Local = filepath.Join(t.TempDir(), "mirror")
+	task := &Task{spec: spec}
+	ctx := context.Background()
+
+	if err := task.reconcileOnce(ctx, newRemoteClient(spec)); err != nil {
+		t.Fatalf("首次 reconcileOnce 失败: %v", err)
+	}
+	// 伪造一个中断下载现场（目标文件已就绪但临时文件残留）
+	tmp := filepath.Join(spec.Local, "a.txt.sync-tmp")
+	meta := filepath.Join(spec.Local, "a.txt.sync-tmp.json")
+	if err := os.WriteFile(tmp, []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(meta, []byte(`{"size":4,"mod":"2024-01-01T10:00:00Z"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 第二轮对账（远端无变化）：增量命中 + 多余清理，续传现场必须豁免保留
+	if err := task.reconcileOnce(ctx, newRemoteClient(spec)); err != nil {
+		t.Fatalf("第二次 reconcileOnce 失败: %v", err)
+	}
+	if _, err := os.Stat(tmp); err != nil {
+		t.Errorf("断点续传现场 %s 不应被多余清理删除: %v", tmp, err)
+	}
+	if _, err := os.Stat(meta); err != nil {
+		t.Errorf("断点元数据 %s 不应被多余清理删除: %v", meta, err)
 	}
 }
