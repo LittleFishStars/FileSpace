@@ -21,8 +21,16 @@ import (
 // 由下次启动的 ApplyDefaultPasswdHash 统一应用——这样日后修改/清除默认密码不会
 // 因旧目录残留哈希而失效。
 func saveSettingsToConfig(cfg *config.Config, configPath string, opts *options) {
-	if len(opts.dirs) == 0 && !opts.hasPasswd && opts.port == 0 && !opts.hasHost {
+	// -s/--sync 创建的同步任务不持久化（尚未支持），--save 与其组合时给出说明
+	if len(opts.syncSpecs) > 0 {
+		log.Print("提示: 同步任务（-s/--sync）暂不写入配置文件，重启后需重新指定 -s；--save 仅保存其余参数")
+	}
+	if len(opts.dirs) == 0 && !opts.hasPasswd && opts.port == 0 && !opts.hasHost && len(opts.syncSpecs) == 0 {
 		log.Fatalf("--save 需要至少一个可保存的参数（-d/--dir <目录>、-P/--passwd <密码>、-p/--port <端口>、--hostname <名称>）")
+	}
+	if len(opts.syncSpecs) > 0 && len(opts.dirs) == 0 && !opts.hasPasswd && opts.port == 0 && !opts.hasHost {
+		// 仅 -s（无可持久化项）：--save 无实际保存内容，仍继续运行（由调用方决定是否提示）
+		return
 	}
 
 	saved := make([]string, 0, 4)

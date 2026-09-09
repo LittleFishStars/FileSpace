@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppTheme from "./_components/app_theme";
 import {AccessProvider} from "./_components/access_context";
+import SyncProgress from "./_components/sync_progress";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +35,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <AppTheme>
           {/* 全局访问来源（本机/远程）上下文：顶层统一拉取一次 /api/node */}
-          <AccessProvider>{children}</AccessProvider>
+          <AccessProvider>
+            {children}
+            {/* 右下角浮动同步进度条：有活跃同步任务时显示（仅本机访问时轮询状态） */}
+            <SyncProgress />
+          </AccessProvider>
         </AppTheme>
       </body>
     </html>

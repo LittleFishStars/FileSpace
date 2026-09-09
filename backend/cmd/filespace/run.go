@@ -18,6 +18,7 @@ import (
 	"filespace/internal/discovery"
 	"filespace/internal/monitor"
 	"filespace/internal/share"
+	syncpkg "filespace/internal/sync"
 )
 
 // app 一次运行的组件集合。
@@ -28,6 +29,7 @@ type app struct {
 	nodeName   string // 节点显示名称（默认系统主机名；--hostname / 配置 hostname 自定义）
 	mon        *monitor.Monitor
 	folders    *share.Manager
+	syncs      *syncpkg.Manager // 后台同步任务（-s/--sync 创建）
 	peers      *discovery.Cache
 	httpSrv    *http.Server
 	registrar  *discovery.Registrar // mDNS 注册句柄（运行中更新 TXT，如修改节点名称）
@@ -36,9 +38,16 @@ type app struct {
 
 // runServer 启动后端服务并等待退出信号后优雅关闭。
 // withWeb 为 true 时（--web 模式）同时托管前端静态资源并在浏览器中打开界面。
-func runServer(cfg *config.Config, configPath string, withWeb bool) {
+// syncSpecs 为 -s/--sync 创建的同步任务（可为空），由其生命周期随后端启动/停止。
+func runServer(cfg *config.Config, configPath string, withWeb bool, syncSpecs []syncpkg.Spec) {
 	a := &app{cfg: cfg, configPath: configPath}
 	a.build()
+
+	// 注册同步任务并启动：后台把远程共享文件夹单向镜像到本地（-s/--sync）
+	for _, spec := range syncSpecs {
+		a.syncs.Add(spec)
+	}
+	a.syncs.Start()
 
 	// staticFS 为 nil → 仅纯 API 路由；非 nil → 组合 API 与静态文件服务器（--web 模式）
 	var staticFS http.FileSystem
@@ -55,6 +64,7 @@ func runServer(cfg *config.Config, configPath string, withWeb bool) {
 	a.startDiscovery()
 	a.announceStartup(withWeb)
 	a.waitAndShutdown()
+	a.syncs.Stop()
 }
 
 // announceStartup 打印启动信息：--web 模式给出界面地址并尝试打开浏览器
@@ -87,6 +97,7 @@ func (a *app) build() {
 	a.folders = share.NewManager(a.cfg.Shared)
 	// 启动时后台预扫共享目录填充统计缓存（不阻塞启动，列表接口首次请求即可拿到统计）
 	a.folders.WarmUp()
+	a.syncs = syncpkg.NewManager()
 	a.peers = discovery.NewCache(a.nodeID)
 }
 
@@ -138,6 +149,8 @@ func (a *app) buildHTTPServer(staticFS http.FileSystem) {
 		OnHostname: func(hostname string) {
 			a.updateNodeName(hostname, hostname == "")
 		},
+		// 后台同步任务（-s/--sync）：本机已有后端运行时经 POST /api/sync/add 交接进来
+		Syncs: a.syncs,
 	})
 	var handler http.Handler
 	if staticFS != nil {

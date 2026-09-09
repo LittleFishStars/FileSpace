@@ -53,7 +53,7 @@
 │   │   ├── share/        # 共享目录：注册表(manager) / 密码(password) / 统计缓存(stats) / 扫描(tree) / 监听(watcher)
 │   │   └── state/        # 本地运行锁
 │   ├── config.yaml       # 配置示例
-│   └── version.go        # 版本号（当前 0.5.0-2609071343）
+│   └── version.go        # 版本号（当前 0.5.0-2609081930）
 └── build/                # 构建产物（gitignored）：build/<系统-架构>/（后端，含嵌入的前端静态资源）
 ```
 
@@ -65,7 +65,7 @@
 | Windows | x64 | ✅ |
 | macOS | ARM64（Apple Silicon）/ x64（Intel） | ✅ |
 
-> ⚠️ **macOS 未经测试**：作者没有 Mac 电脑，macOS（darwin）二进制为交叉编译产物，「在浏览器中打开界面」（`open`）与系统原生目录选择器（`osascript`）等 macOS 特有逻辑未在真实 Mac 上验证，如遇问题请提交 Issue 反馈。
+> ⚠️ **macOS 未经测试**：作者没有 Mac 电脑，macOS（darwin）二进制为交叉编译产物，「在浏览器中打开界面」（`open`）与系统原生目录选择器（zenity 库在 macOS 走 `osascript`）等 macOS 特有逻辑未在真实 Mac 上验证，如遇问题请提交 Issue 反馈。
 
 ## 📦 安装与启动
 
@@ -175,6 +175,19 @@ filespace — 文件空间后端（局域网文件共享 API + 前端托管）
 
 参数:
   -d, --dir <目录>        要共享的文件夹，可多次指定（在配置文件 shared_folders 之外追加）
+  -s, --sync <远程ip>:<文件夹id> <本地路径>
+                          创建并后台持续同步一个本地文件夹：把远程节点（filespace）
+                          共享的某个文件夹单向镜像到本地目录（远程为事实源，本地改动
+                          会被覆盖/清理）。可多次指定，每个 -s 后紧跟一个位置参数作为
+                          本地同步路径；未给位置参数时默认使用当前目录下
+                          sync-<远程ip>-<文件夹id> 派生目录。同步在后台每约 30 秒
+                          对账一次，增量下载变动文件；本地多余条目（远端已删除）会被清理。
+                          文件夹 id 由远程节点的共享文件夹路径生成（8 位十六进制哈希，
+                          打开该节点界面/看其 /api/folders 返回即可获得）。
+                          远程节点端口非 8080 时用 <ip>:<端口>:<文件夹id>；
+                          IPv6 用方括号包裹，如 [::1]:<文件夹id>。
+                          若该文件夹设置了访问密码，用 -P/--passwd 提供密码。
+                          已有后端在运行时，-s 会交给已运行的后端（同步立即生效）。
   --web                   同时启动前端界面并在浏览器中打开（默认只启动后端 API）
   -c, --config <文件>     配置文件路径（YAML，默认 <用户配置目录>/filespace/config.yaml）
   -p, --port <端口>       监听端口（默认 8080）
@@ -183,7 +196,8 @@ filespace — 文件空间后端（局域网文件共享 API + 前端托管）
                              （未显式设置密码的），其他节点需输入密码才能查看/下载；本机不受影响
                            · 已有后端在运行时：需与 -d/--dir 配合，修改该目录的访问密码
                              （传空值 -P '' 表示移除密码）；目录未共享时按「新增共享并设密码」处理
-                           也可在 web 端添加/管理共享时按文件夹单独设置密码
+                           也可在 web 端添加/管理共享时按文件夹单独设置密码；
+                           另外作为 -s/--sync 的同步访问密码（同步的远端文件夹设置了密码时使用）
   --hostname <名称>       自定义本节点在局域网中显示的名称（默认用系统主机名；
                            也受配置文件顶层 hostname 控制，命令行优先）。
                            节点 ID 仍按系统主机名生成，改名不影响其他节点对它的识别；
@@ -215,9 +229,14 @@ filespace — 文件空间后端（局域网文件共享 API + 前端托管）
   filespace -P secret -d ~/docs --save
                                    共享 ~/docs 并设置默认密码，目录与密码一并保存
   filespace -p 9000 --save         把监听端口 9000 保存到配置文件
+  filespace -s 192.168.1.5:abcd1234 ~/remote-docs
+                                   把 192.168.1.5 上共享文件夹 id=abcd1234 的内容
+                                   后台持续同步到 ~/remote-docs（单向镜像，保持最新）
+  filespace -s 192.168.1.5:9000:abcd1234 ~/remote-docs -P secret
+                                   同步设置了访问密码的远程文件夹（端口 9000、密码 secret）
 ```
 
-配置优先级：命令行 `-p` > 配置文件 > 默认值；`--hostname` 同理（命令行 > 配置文件顶层 `hostname` > 系统主机名）；`-d/--dir` 指定的目录追加到配置文件的 `shared_folders` 之后（重复路径自动去重）。无参数且配置未列共享目录时，后端启动但不共享任何文件夹（仅提供 API，可在本机管理页添加）。
+配置优先级：命令行 `-p` > 配置文件 > 默认值；`--hostname` 同理（命令行 > 配置文件顶层 `hostname` > 系统主机名）；`-d/--dir` 指定的目录追加到配置文件的 `shared_folders` 之后（重复路径自动去重）。无参数且配置未列共享目录时，后端启动但不共享任何文件夹（仅提供 API，可在本机管理页添加）。`-s/--sync` 的同步访问密码取 `-P/--passwd`（或配置顶层 `passwd`）的当前值；同步仅在指定了 `-s` 的本次运行中生效，尚未持久化到配置文件（后续版本支持）。
 
 ## 📡 API 一览
 
@@ -228,8 +247,9 @@ filespace — 文件空间后端（局域网文件共享 API + 前端托管）
 | `POST /api/auth` | 校验共享访问密码，签发访问令牌（令牌绑定密码，同一密码的文件夹可共用；本节点没有需要密码的文件夹时返回 404） |
 | `POST /api/folders/add` | 追加共享目录（仅供本机回环地址调用，同机另一 filespace 进程移交目录用；本机管理页添加时可用 `password` 字段为该文件夹设置访问密码） |
 | `POST /api/folders/remove` | 移除共享目录（仅供本机回环地址调用，本机管理页用） |
-| `POST /api/local/pick-directory` | 在本机弹出系统原生目录选择对话框并返回所选目录绝对路径（仅供本机回环地址调用；Linux 用 zenity/kdialog 等、Windows 用 PowerShell、macOS 用 osascript；用户取消返回 `cancelled`） |
+| `POST /api/local/pick-directory` | 在本机弹出系统原生目录选择对话框并返回所选目录绝对路径（仅供本机回环地址调用；跨平台统一由 ncruces/zenity 提供——Linux 依赖已安装的 zenity/qarma/matedialog 之一、Windows 原生对话框、macOS 走 osascript；用户取消返回 `cancelled`） |
 | `GET /api/folders/{id}/tree` | 文件树（懒加载；文件夹设置密码时需携带访问令牌，本机回环豁免） |
 | `GET /api/folders/{id}/download` | 文件下载（支持 Range 断点续传；文件夹设置密码时需携带访问令牌，本机回环豁免） |
 | `POST /api/folders/{id}/open` | 用系统默认应用打开本机文件（仅供本机回环地址调用，xdg-open / open / cmd start） |
+| `POST /api/sync/add` | 创建后台同步文件夹（仅供本机回环地址调用；同机另一 filespace 进程用 `-s/--sync` 移交同步任务时用。请求体：`{host, port, folder_id, local, passwd?}`） |
 | `GET /api/peers` | mDNS 发现的其他节点（含其共享文件夹） |

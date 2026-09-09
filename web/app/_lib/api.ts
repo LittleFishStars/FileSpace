@@ -148,3 +148,43 @@ export const downloadUrl = (folderId: string, path: string, base = '', token?: s
  */
 export const authLogin = (base: string, password: string) =>
     postJSON<{token: string}>(`${base}/api/auth`, {password}).then((r) => r.token)
+
+/** 后台同步任务的配置（与 backend/internal/sync.Spec 对齐） */
+export interface ApiSyncSpec {
+    /** 远程节点地址（不带端口）：IP 或主机名 */
+    host: string
+    /** 远程节点监听端口；0 表示使用默认端口 8080 */
+    port?: number
+    /** 远程节点上要同步的共享文件夹 id（8 位十六进制） */
+    folder_id: string
+    /** 本地同步文件夹路径（不存在则自动创建） */
+    local: string
+    /** 访问远端该文件夹所用的密码（该文件夹设置了访问密码时使用；空表示开放） */
+    passwd?: string
+}
+
+/** 添加后台同步任务（POST /api/sync/add，仅本机回环调用生效） */
+export const addSync = (spec: ApiSyncSpec) =>
+    postJSON<{added: string}>('/api/sync/add', spec).then((r) => r.added)
+
+/** 后台同步任务的实时状态快照（与 backend/internal/sync.TaskSnapshot 对齐） */
+export interface ApiSyncTask {
+    /** 远端定位（ip:port:folderid） */
+    remote: string
+    /** 本地同步目录 */
+    local: string
+    /** 任务生命周期：等待启动/同步中/已停止 */
+    status: string
+    /** 当前阶段：listing（获取文件列表）/ downloading（下载）/ ""（空闲或结束） */
+    phase: string
+    /** 当前阶段进度分子：获取列表阶段为已发现字节，下载阶段为已下载字节 */
+    done: number
+    /** 进度分母：目标文件夹总大小（字节） */
+    total: number
+    /** 下载速度（字节/秒，仅下载阶段有效） */
+    speed: number
+}
+
+/** 查询全部后台同步任务状态（GET /api/sync/status，仅本机回环调用生效） */
+export const fetchSyncStatus = () =>
+    fetchJSON<{tasks: ApiSyncTask[]}>('/api/sync/status').then((r) => r.tasks)

@@ -31,10 +31,19 @@ export interface HostInfo {
   softwareVersion: string
   /** 该节点是否设置了共享访问密码（访问其文件需输入密码） */
   auth?: boolean
+  /** 节点 API 地址 host:port（同步/浏览远端文件时使用；缺失时后端回退默认端口） */
+  listenAddr?: string
   folders: ApiFolderInfo[]
 }
 
-export default function HostCard({ host }: { host: HostInfo }) {
+export default function HostCard({
+  host,
+  /** 为文件夹提供「同步」入口的回调；不提供则不显示同步按钮 */
+  onSyncFolder,
+}: {
+  host: HostInfo
+  onSyncFolder?: (folder: ApiFolderInfo, host: HostInfo) => void
+}) {
   const online = host.status === 'online'
 
   return (
@@ -108,7 +117,10 @@ export default function HostCard({ host }: { host: HostInfo }) {
       <div className="mt-3 flex flex-col gap-3">
         {host.folders.map((folder) => (
           <Link key={folder.id} href={`/folders?folderId=${folder.id}`} className="block">
-            <FolderCard folder={folder}/>
+            <FolderCard
+              folder={folder}
+              onSync={onSyncFolder ? () => onSyncFolder(folder, host) : undefined}
+            />
           </Link>
         ))}
       </div>
