@@ -146,7 +146,7 @@ func (c *remoteClient) tree(ctx context.Context, rel string) ([]model.FileInfo, 
 // 中断时保留 .sync-tmp 已下载部分与 .sync-tmp.json 版本元数据，下次对账
 // 凭元数据校验远端版本一致后从断点（Range）续传而非整包重下。远端
 // handleDownload 用 http.ServeFile 原生支持 Range/If-Range，无需远端配合；
-// 远端为旧版本/不支持 Range 时回退 200 全量，行为不变。
+// 服务端不支持 Range 或文件已更新（If-Range 不匹配）时回退 200 全量，行为不变。
 const (
 	tmpSuffix  = ".sync-tmp"      // 未完成下载的临时文件后缀
 	metaSuffix = ".sync-tmp.json" // 临时文件对应的远端版本元数据后缀
@@ -248,15 +248,15 @@ func (c *remoteClient) download(ctx context.Context, rel, localPath string, size
 	if err != nil {
 		return fmt.Errorf("创建本地文件 %q 失败: %w", localPath, err)
 	}
-	// 整包下载（start==0，含续传被服务端拒绝回退全量）时截断临时文件：
-	// 其上可能遗留上次未完成/版本不符的部分数据。
+	// 写入起点：整包下载（start==0，含续传被服务端拒绝回退全量）时截断临时
+	// 文件——其上可能遗留上次未完成/版本不符的部分数据；续传（start>0）时
+	// 定位到断点，把新数据追加到已下载部分之后。
 	if start == 0 {
 		if err := f.Truncate(0); err != nil {
 			_ = f.Close()
 			return fmt.Errorf("重置本地文件 %q 失败: %w", localPath, err)
 		}
-	}
-	if _, err := f.Seek(start, io.SeekStart); err != nil {
+	} else if _, err := f.Seek(start, io.SeekStart); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("定位本地文件 %q 失败: %w", localPath, err)
 	}
@@ -301,12 +301,11 @@ func saveTmpMeta(metaPath string, size int64, mod string) error {
 func removeTmpMeta(metaPath string) { _ = os.Remove(metaPath) }
 
 // isTmpArtifact 判断相对路径是否为同步下载产生的临时产物（未完成下载的
-// .sync-tmp 及其元数据 *.sync-tmp.json、*.sync-tmp.json.tmp）。它们是断点
-// 续传的现场，清理本地多余条目时必须豁免，否则下一轮对账的续传现场被删。
+// .sync-tmp 及其元数据 *.sync-tmp.json、*.sync-tmp.json.tmp——后者含前者
+// 子串，用 Contains 一并覆盖）。它们是断点续传的现场，清理本地多余条目时
+// 必须豁免，否则下一轮对账的续传现场被删。
 func isTmpArtifact(rel string) bool {
-	return strings.HasSuffix(rel, tmpSuffix) ||
-		strings.HasSuffix(rel, metaSuffix) ||
-		strings.HasSuffix(rel, metaSuffix+".tmp")
+	return strings.HasSuffix(rel, tmpSuffix) || strings.Contains(rel, metaSuffix)
 }
 
 // ensureParentDir 确保文件所在父目录存在。
