@@ -12,13 +12,28 @@ import (
 	"time"
 
 	"filespace/internal/state"
+	"filespace/internal/sync"
 )
 
 // handoffToExisting 已有后端在运行（运行锁被持有）时，把本次操作交给它：
 //   - 无 -P：仅支持用 -d/--dir 追加共享目录；
 //   - 带 -P（含空值）：需与 -d/--dir 配合，为这些目录设置/修改/移除访问密码——
-//     目录已共享则修改其密码（空值移除），未共享则作为新增共享设置密码。
-func handoffToExisting(port int, opts *options) {
+//     目录已共享则修改其密码（空值移除），未共享则作为新增共享设置密码；
+//   - 带 -s/--sync：把同步任务交出去（POST /api/sync/add），同步立即在后端启动。
+func handoffToExisting(port int, opts *options, passwd string) {
+	// 同步任务优先处理：-s 创建同步文件夹；-P 在此场景作为同步访问密码（可搭配）
+	if len(opts.syncSpecs) > 0 {
+		if len(opts.dirs) > 0 {
+			log.Fatalf("-s/--sync 不能与 -d/--dir 同时使用（同步文件夹与共享目录是两种独立操作）")
+		}
+		specs := buildSyncSpecs(opts, passwd)
+		sendSyncSpecs(port, specs)
+		if opts.save {
+			log.Print("配置已保存（--save）；同步任务本身不持久化，重启 filespace 后需重新指定 -s")
+		}
+		fmt.Printf("已将 %d 个同步文件夹交给已运行的后端（端口 %d）\n", len(specs), port)
+		return
+	}
 	paths := opts.dirs
 	if len(paths) == 0 {
 		if opts.save {
@@ -154,4 +169,21 @@ func sendAddFolders(port int, paths []string, password string) error {
 // （password 为空表示移除）。目录未共享时后端返回 404。
 func sendSetFolderPassword(port int, path, password string) error {
 	return postAPI(port, "/api/folders/password", map[string]any{"path": path, "password": password})
+}
+
+// sendSyncSpecs 把命令行 -s/--sync 创建的同步任务逐个交给已运行的后端
+// （POST /api/sync/add，与启动时直接注册等价）。
+func sendSyncSpecs(port int, specs []sync.Spec) {
+	ok := true
+	for _, spec := range specs {
+		if err := postAPI(port, "/api/sync/add", spec); err != nil {
+			ok = false
+			log.Printf("创建同步文件夹 %s（<- %s）失败: %v", spec.Local, spec.Address(), err)
+			continue
+		}
+		fmt.Printf("✅ 已创建同步文件夹: %s <- %s:%s\n", spec.Local, spec.Address(), spec.FolderID)
+	}
+	if !ok {
+		log.Fatalf("部分同步任务创建失败，见上方错误")
+	}
 }

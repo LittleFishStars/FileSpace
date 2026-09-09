@@ -15,9 +15,10 @@ func main() {
 		usage()
 		return
 	}
-	// 共享目录只能通过 -d/--dir 或配置文件 shared_folders 指定，不接受位置参数
-	if len(args) > 0 {
-		log.Fatalf("不支持位置参数，请改用 -d/--dir 指定要共享的文件夹: %v", args)
+	// 共享目录只能通过 -d/--dir 或配置文件 shared_folders 指定，不接受位置参数；
+	// 位置参数仅配合 -s/--sync 使用，作为对应的本地同步路径（与 -s 一一配对）。
+	if err := bindSyncLocals(opts, args); err != nil {
+		log.Fatalf("%v", err)
 	}
 	cfg, configPath := loadConfig(opts)
 	// --save：先把本次命令行参数设置（目录/密码/端口）追加保存到配置文件，
@@ -32,7 +33,7 @@ func main() {
 		log.Fatalf("获取运行锁失败: %v", err)
 	}
 	if existing > 0 {
-		handoffToExisting(existing, opts)
+		handoffToExisting(existing, opts, cfg.Passwd)
 		return
 	}
 	defer lock.Release()
@@ -40,7 +41,7 @@ func main() {
 	// 兜底：锁文件缺失但同端口已有后端（如锁文件被误删）
 	if err := probeBackend(cfg.ListenPort); err != nil {
 		if errors.Is(err, state.ErrBackendRunning) {
-			handoffToExisting(cfg.ListenPort, opts)
+			handoffToExisting(cfg.ListenPort, opts, cfg.Passwd)
 			return
 		}
 		log.Fatalf("端口 %d 不可用: %v", cfg.ListenPort, err)
@@ -53,6 +54,9 @@ func main() {
 	}
 	resolveSharedFolders(cfg, startupDirs)
 
+	// 构建后台同步任务（-s/--sync）：用默认密码（-P/--passwd 或配置顶层 passwd）作为访问密码
+	syncSpecs := buildSyncSpecs(opts, cfg.Passwd)
+
 	// 以是否托管前端界面（--web）为唯一差异启动后端服务
-	runServer(cfg, configPath, opts.web)
+	runServer(cfg, configPath, opts.web, syncSpecs)
 }

@@ -24,10 +24,11 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 
 ## 后端约定
 
-- Go 1.27，模块名 `filespace`；依赖：gopsutil（跨平台采集）、zeroconf（mDNS）、yaml.v3（配置）
-- 包依赖为单向无环：`config / model / monitor / auth / desktop` 是稳定基础层（不依赖其他内部包；desktop 提供「系统默认应用打开文件/URL」的平台分发，api 打开共享文件与 cmd --web 打开浏览器共用），`share` 依赖 `auth + config + model`，`api` 依赖全部。新增代码勿制造反向依赖
+- Go 1.27，模块名 `filespace`；依赖：gopsutil（跨平台采集）、zeroconf（mDNS）、yaml.v3（配置）、ncruces/zenity（跨平台系统原生目录选择对话框，替代按平台手写 PowerShell/osascript/多工具探测）、cenkalti/backoff（sync 失败重试的指数退避）
+- 包依赖为单向无环：`config / model / monitor / auth / desktop / pathutil` 是稳定基础层（不依赖其他内部包；desktop 提供「系统默认应用打开文件/URL」的平台分发，api 打开共享文件与 cmd --web 打开浏览器共用；pathutil 提供目录包含/越界校验 Within，share 的路径解析与 sync 的本地镜像映射共用），`share` 依赖 `auth + config + model + pathutil`，`sync` 依赖 `model + pathutil`，`api` 依赖全部。新增代码勿制造反向依赖
 - **密码哈希与访问令牌是 `internal/auth` 包的单一契约**：`auth.Hash`（sha256 值类型）承载文件夹密码，`auth.Tokens` 负责签发/校验。`share`（存哈希、匹配登录密码）与 `api`（签发/校验令牌）都依赖它，勿在别处重复实现 sha256 或来回 hex↔bytes 转换；明文只允许出现在输入入口（配置文件/CLI/API 请求体）
 - `share` 包按职责分文件：`folder.go`(Folder 类型/ID/真实路径去重) `manager.go`(注册表增删查) `password.go`(密码哈希助手) `stats.go`(缓存与后台扫描) `tree.go`(目录列表与预览判定) `watcher.go`(fsnotify 监听)
+- `sync` 包（`internal/sync/`）：`-s/--sync <远程ip>:<文件夹id> <本地路径>` 创建的后台同步任务——把远端某共享文件夹单向镜像到本地（远程为事实源，30s 周期对账、增量下载、本地多余清理；对账失败用 cenkalti/backoff 指数退避重试，远端文件夹消失视为永久错误停止任务）。只依赖 `internal/model + pathutil`（经远端公开 API：`/api/folders` 定位 + 可选 `/api/auth` 认证 + `tree`/`download` 拉取），不依赖同进程共享管理；cmd/run 装配其生命周期、api 暴露 `POST /api/sync/add`（本机回环）供「已有后端运行时 -s 交接」
 - 文件可预览性由**内容嗅探**判定（`http.DetectContentType`），`FileInfo.previewable` 供前端隐藏二进制文件的预览按钮，勿改回硬编码扩展名
 - `--web` 模式：`go:embed` 嵌入 `backend/cmd/filespace/web/` 下的前端静态资源，`HandlerWithStatic` 组合 API 路由与静态文件服务器
 - **开发模式 go run 依赖 embed 目录存在**：`//go:embed all:web` 在编译期要求 `backend/cmd/filespace/web/` 非空。仓库已提交 `.gitkeep` 占位（`git add -f` 强制跟踪，因目录被 gitignore），`scripts/dev.py` 启动后端前也会自动补齐（应对 `build.py --clean` 删除后直接 dev）；生产构建由 `build.py` 用真实静态资源覆盖该目录
@@ -51,7 +52,7 @@ python3 scripts/build.py --list / --clean # 列出平台 / 清理产物
 
 - 注释、文档、提交信息使用中文
 - 更新 AGENTS.md / README.md 后一并提交
-- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.5.0-2609071343`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.5.0` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
+- 版本号约定（2026-08-30 起）：格式为 `<主>.<次>.<补丁>-<时间戳>`，当前 `backend/version.go` 为 `0.5.1-2609092316`（`web/package.json` 的 version 同步保持一致，均不带 v 前缀）。`0.5.1` 固定，**除非用户明确要求修改版本号，否则不得改动**。**提交信息中不再附带版本号**（版本号仅在用户要求升级或发版时统一修改）。
 - git 推送必须用 HTTPS remote + gh 凭据助手（本环境 SSH 推送会因 ssh_config.d 权限失败）
 
 <!-- BEGIN:nextjs-agent-rules -->

@@ -16,6 +16,8 @@ function toHostInfo(node: ApiNodeInfo, folders: ApiFolderInfo[]): HostInfo {
         uptime: node.uptime,
         softwareVersion: node.softwareVersion,
         auth: node.auth,
+        /** 节点 API 地址 host:port（同步/浏览远端文件时使用；缺失时后端回退默认端口） */
+        listenAddr: node.listenAddr,
         folders,
     };
 }
@@ -37,4 +39,22 @@ export function buildHosts(node: ApiNodeInfo, localFolders: ApiFolderInfo[], pee
         list.push(toHostInfo(peer.node, peer.folders));
     }
     return list;
+}
+
+/**
+ * 从节点信息解析同步用的远程定位（host + port）：
+ * 优先取 listenAddr（host:port），缺失时回退 ip + 默认端口（port=0 交由后端补 8080）。
+ * 与后端 sync.Spec / discovery.peerAddr 的口径一致。
+ * 入参为结构兼容类型：ApiNodeInfo 与 HostInfo 均满足（只读 ip / listenAddr 两个字段）。
+ */
+export function hostSyncAddress(node: {ip: string; listenAddr?: string}): {host: string; port: number} {
+    const addr = node.listenAddr?.trim() ?? '';
+    const idx = addr.lastIndexOf(':');
+    if (idx > 0) {
+        const port = Number(addr.slice(idx + 1));
+        if (Number.isInteger(port) && port > 0 && port <= 65535) {
+            return {host: addr.slice(0, idx), port};
+        }
+    }
+    return {host: node.ip, port: 0}; // 0 表示使用默认端口 8080
 }
